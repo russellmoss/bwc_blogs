@@ -6,6 +6,183 @@
 
 ---
 
+## Current Infrastructure State — As Built
+
+> **Last updated:** 2026-03-01
+> This section documents what is actually deployed and working RIGHT NOW. It serves as the source of truth for all future implementation guides.
+
+### Deployed Infrastructure
+
+| Component | Status | Details |
+|---|---|---|
+| **Vercel Project** | ✅ Live | `bwc-content-engine` at `https://bwc-content-engine.vercel.app` |
+| **GitHub Repo** | ✅ Connected | `russellmoss/bwc_blogs` — auto-deploys on push to `main` |
+| **Neon Postgres** | ✅ Provisioned | Via Vercel Storage integration, US East |
+| **Onyx CE (RAG)** | ✅ Running | Self-hosted on DigitalOcean droplet at `159.65.45.1`, accessible at `https://rmoss-onyx.xyz` |
+| **Onyx Google Drive Connector** | ✅ Indexing | Connected to BWC knowledge base folder, OAuth authenticated |
+| **Cloudinary** | ✅ Configured | Cloud name: `deahtb4kj`, upload preset: `blog` (signed) |
+| **Cloudflare DNS** | ✅ Active | `rmoss-onyx.xyz` → `159.65.45.1`, SSL mode: Flexible |
+| **Claude API** | ✅ Key set | Model: `claude-sonnet-4-5-20250929` |
+
+### DigitalOcean Droplet (Onyx Host)
+
+- **IP:** 159.65.45.1
+- **OS:** Ubuntu 24.04 LTS
+- **RAM:** 4GB + 4GB swap
+- **Disk:** 80GB
+- **Region:** NYC3
+- **Domain:** `rmoss-onyx.xyz` (via Cloudflare, SSL Flexible)
+- **Docker containers:** nginx, api_server, web_server, background, inference_model_server, indexing_model_server, relational_db (postgres), minio, cache (redis), index (vespa), code-interpreter
+- **Auth:** Google OAuth (`russellmoss87@gmail.com`)
+- **Connectors:** Google Drive (OAuth, pointed at BWC knowledge base folder)
+
+### Vercel Project
+
+- **Name:** `bwc-content-engine`
+- **URL:** `https://bwc-content-engine.vercel.app`
+- **Team/Scope:** `russell-moss-projects`
+- **Region:** `iad1` (US East — Washington DC)
+- **Framework:** Next.js (App Router)
+- **GitHub:** `russellmoss/bwc_blogs` (auto-deploy on push to `main`)
+
+### Current App Scaffold
+
+```
+src/
+├── app/
+│   ├── layout.tsx
+│   ├── page.tsx              ← Landing page (BWC branded)
+│   ├── favicon.ico
+│   ├── globals.css
+│   ├── api/
+│   │   └── health/
+│   │       └── route.ts      ← Health check endpoint
+│   └── (dashboard)/
+│       └── page.tsx          ← Placeholder
+├── lib/
+│   ├── db/index.ts           ← Placeholder (Prisma client goes here)
+│   ├── onyx/client.ts        ← Config object
+│   ├── claude/client.ts      ← Config object
+│   ├── cloudinary/client.ts  ← Config object
+│   └── env.ts                ← Env validation
+├── types/index.ts            ← Article type stub
+└── config/site.ts            ← Site constants
+```
+
+### Environment Variables — Complete Inventory
+
+| Variable | Service | Has Value | In Vercel |
+|---|---|---|---|
+| `NODE_ENV` | App | ✅ | ✅ |
+| `APP_URL` | App | ✅ | ✅ |
+| `NEXT_PUBLIC_APP_URL` | App | ✅ | ✅ |
+| `DATABASE_URL` | Neon | ✅ | ✅ |
+| `DATABASE_URL_UNPOOLED` | Neon | ✅ | ✅ |
+| `PGHOST` | Neon | ✅ | ✅ |
+| `PGHOST_UNPOOLED` | Neon | ✅ | ✅ |
+| `PGUSER` | Neon | ✅ | ✅ |
+| `PGDATABASE` | Neon | ✅ | ✅ |
+| `PGPASSWORD` | Neon | ✅ | ✅ |
+| `POSTGRES_URL` | Neon | ✅ | ✅ |
+| `POSTGRES_URL_NON_POOLING` | Neon | ✅ | ✅ |
+| `POSTGRES_USER` | Neon | ✅ | ✅ |
+| `POSTGRES_HOST` | Neon | ✅ | ✅ |
+| `POSTGRES_PASSWORD` | Neon | ✅ | ✅ |
+| `POSTGRES_DATABASE` | Neon | ✅ | ✅ |
+| `POSTGRES_URL_NO_SSL` | Neon | ✅ | ✅ |
+| `POSTGRES_PRISMA_URL` | Neon | ✅ | ✅ |
+| `DIRECT_URL` | Neon | ✅ | ✅ |
+| `AUTH_SECRET` | Auth | ✅ | ✅ |
+| `NEXTAUTH_SECRET` | Auth | ✅ | ✅ |
+| `AUTH_URL` | Auth | ✅ | ✅ |
+| `NEXTAUTH_URL` | Auth | ✅ | ✅ |
+| `ADMIN_EMAIL` | Auth | ❌ placeholder | ✅ |
+| `ADMIN_NAME` | Auth | ✅ | ✅ |
+| `ADMIN_PASSWORD` | Auth | ❌ placeholder | ✅ |
+| `ANTHROPIC_API_KEY` | Claude | ✅ | ✅ |
+| `ANTHROPIC_MODEL` | Claude | ✅ | ✅ |
+| `ANTHROPIC_SMALL_MODEL` | Claude | ✅ | ✅ |
+| `ANTHROPIC_MAX_OUTPUT_TOKENS` | Claude | ✅ | ✅ |
+| `ONYX_BASE_URL` | Onyx | ✅ | ✅ |
+| `ONYX_API_URL` | Onyx | ✅ | ✅ |
+| `ONYX_API_KEY` | Onyx | ✅ | ✅ |
+| `ONYX_INDEX_NAME` | Onyx | ✅ | ✅ |
+| `ONYX_SEARCH_TIMEOUT_MS` | Onyx | ✅ | ✅ |
+| `CLOUDINARY_URL` | Cloudinary | ✅ | ✅ |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary | ✅ | ✅ |
+| `CLOUDINARY_API_KEY` | Cloudinary | ✅ | ✅ |
+| `CLOUDINARY_API_SECRET` | Cloudinary | ✅ | ✅ |
+| `CLOUDINARY_UPLOAD_FOLDER` | Cloudinary | ✅ | ✅ |
+| `CLOUDINARY_SECURE_DELIVERY` | Cloudinary | ✅ | ✅ |
+| `BWC_SITE_URL` | BWC Site | ✅ | ✅ |
+| `BWC_BLOG_BASE_URL` | BWC Site | ✅ | ✅ |
+| `BWC_SITEMAP_URL` | BWC Site | ✅ | ✅ |
+| `CRON_SECRET` | App | ❌ placeholder | ✅ |
+| `WIX_BLOG_COLLECTION_PATH` | BWC Site | ✅ | ✅ |
+| `DEFAULT_CANONICAL_DOMAIN` | BWC Site | ✅ | ✅ |
+| `DEFAULT_TIMEZONE` | App | ✅ | ✅ |
+| `DEFAULT_LOCALE` | App | ✅ | ✅ |
+| `ENABLE_QA_SCORECARD` | Feature Flag | ✅ | ✅ |
+| `ENABLE_HTML_MODE` | Feature Flag | ✅ | ✅ |
+| `ENABLE_CANVAS_EDIT` | Feature Flag | ✅ | ✅ |
+| `ENABLE_WEB_SEARCH` | Feature Flag | ✅ | ✅ |
+| `ENABLE_PHOTO_MANAGER` | Feature Flag | ✅ | ✅ |
+| `ENABLE_LEAD_CAPTURE` | Feature Flag | ✅ | ✅ |
+| `LINK_CHECK_TIMEOUT_MS` | App | ✅ | ✅ |
+| `MAX_EXTERNAL_LINKS_PER_ARTICLE` | App | ✅ | ✅ |
+| `USER_AGENT` | App | ✅ | ✅ |
+| `CAPTURE_ENABLED` | Lead Capture | ✅ | ✅ |
+| `CAPTURE_HMAC_SECRET` | Lead Capture | ❌ placeholder | ✅ |
+| `DEFAULT_NEWSLETTER_LIST_ID` | Lead Capture | ❌ empty | ✅ |
+| `DEFAULT_ALLOCATION_LIST_ID` | Lead Capture | ❌ empty | ✅ |
+| `DEFAULT_TOUR_LIST_ID` | Lead Capture | ❌ empty | ✅ |
+| `KLAVIYO_API_KEY` | ESP (Klaviyo) | ❌ empty | ✅ |
+| `KLAVIYO_LIST_ID` | ESP (Klaviyo) | ❌ empty | ✅ |
+| `MAILCHIMP_API_KEY` | ESP (Mailchimp) | ❌ empty | ✅ |
+| `MAILCHIMP_SERVER_PREFIX` | ESP (Mailchimp) | ❌ empty | ✅ |
+| `MAILCHIMP_AUDIENCE_ID` | ESP (Mailchimp) | ❌ empty | ✅ |
+| `GSC_SITE_URL` | Google Search Console | ✅ | ✅ |
+| `GOOGLE_CLIENT_ID` | Google API | ❌ empty | ✅ |
+| `GOOGLE_CLIENT_SECRET` | Google API | ❌ empty | ✅ |
+| `GOOGLE_REFRESH_TOKEN` | Google API | ❌ empty | ✅ |
+| `LOG_LEVEL` | Observability | ✅ | ✅ |
+| `SENTRY_DSN` | Sentry | ❌ empty | ✅ |
+| `SENTRY_AUTH_TOKEN` | Sentry | ❌ empty | ✅ |
+| `SENTRY_ORG` | Sentry | ❌ empty | ✅ |
+| `SENTRY_PROJECT` | Sentry | ❌ empty | ✅ |
+| `SEED_DEV_DATA` | Dev | ✅ | ✅ |
+| `SKIP_AUTH_IN_DEV` | Dev | ✅ | ✅ |
+
+### Verified Endpoints
+
+| Endpoint | URL | Status |
+|---|---|---|
+| Landing page | `https://bwc-content-engine.vercel.app` | ✅ |
+| Health check | `https://bwc-content-engine.vercel.app/api/health` | ✅ |
+| Onyx UI | `https://rmoss-onyx.xyz` | ✅ |
+
+### What's NOT Built Yet
+
+The architecture doc describes the following features that do **not** yet exist in the codebase:
+
+- Prisma schema / database tables
+- Auth system (NextAuth)
+- Article generation orchestration
+- Claude prompt assembly
+- Onyx RAG integration in the app
+- Split-pane UI (chat + preview)
+- Canvas Edit mode
+- HTML mode
+- Article scorecard / QA system
+- Image pipeline (Cloudinary integration)
+- Internal link graph
+- Content map / blog registry
+- Schema markup generation
+- Version history
+- Finalized HTML export
+
+---
+
 ## 1. System Overview
 
 ### What the System Does
