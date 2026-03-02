@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/auth/session";
+import { requireAuth } from "@/lib/auth/session";
 import { hashPassword, validatePassword } from "@/lib/auth/password";
 import { z } from "zod";
 
@@ -11,10 +11,10 @@ const CreateUserSchema = z.object({
   role: z.enum(["admin", "editor", "viewer"]).default("editor"),
 });
 
-// GET /api/users — List all users (admin only)
+// GET /api/users — List all users
 export async function GET() {
   try {
-    await requireRole("admin");
+    await requireAuth();
 
     const users = await prisma.user.findMany({
       select: {
@@ -37,12 +37,6 @@ export async function GET() {
         { status: 401 }
       );
     }
-    if (message === "AUTH_FORBIDDEN") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-        { status: 403 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: { code: "INTERNAL_ERROR", message } },
       { status: 500 }
@@ -50,10 +44,10 @@ export async function GET() {
   }
 }
 
-// POST /api/users — Create a new user (admin only)
+// POST /api/users — Create a new user
 export async function POST(request: NextRequest) {
   try {
-    await requireRole("admin");
+    await requireAuth();
 
     const body = await request.json();
     const parsed = CreateUserSchema.safeParse(body);
@@ -117,12 +111,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
         { status: 401 }
-      );
-    }
-    if (message === "AUTH_FORBIDDEN") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-        { status: 403 }
       );
     }
     return NextResponse.json(

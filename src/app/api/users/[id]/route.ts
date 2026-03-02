@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/auth/session";
+import { requireAuth } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
 import { z } from "zod";
 
@@ -17,7 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole("admin");
+    await requireAuth();
     const { id } = await params;
 
     const user = await prisma.user.findUnique({
@@ -49,12 +49,6 @@ export async function GET(
         { status: 401 }
       );
     }
-    if (message === "AUTH_FORBIDDEN") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-        { status: 403 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: { code: "INTERNAL_ERROR", message } },
       { status: 500 }
@@ -68,7 +62,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole("admin");
+    await requireAuth();
     const { id } = await params;
 
     const body = await request.json();
@@ -110,12 +104,6 @@ export async function PATCH(
         { status: 401 }
       );
     }
-    if (message === "AUTH_FORBIDDEN") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-        { status: 403 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: { code: "INTERNAL_ERROR", message } },
       { status: 500 }
@@ -129,7 +117,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole("admin");
+    await requireAuth();
     const { id } = await params;
 
     const user = await prisma.user.update({
@@ -145,12 +133,6 @@ export async function DELETE(
       return NextResponse.json(
         { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
         { status: 401 }
-      );
-    }
-    if (message === "AUTH_FORBIDDEN") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-        { status: 403 }
       );
     }
     return NextResponse.json(

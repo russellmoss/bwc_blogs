@@ -28,7 +28,8 @@ function formatDate(isoDate: string): string {
 /** Render an image placement (figure + img + figcaption) */
 function renderImage(
   placement: ImagePlacement,
-  isHero: boolean
+  isHero: boolean,
+  dataCadPrefix?: string
 ): string {
   // Determine image src: use Cloudinary URL if photoId is set, otherwise use src directly
   const src = placement.photoId
@@ -59,7 +60,8 @@ function renderImage(
     />`;
 
   if (!isDecorative && placement.caption) {
-    html += `\n    <figcaption>${escapeHtml(placement.caption)}</figcaption>`;
+    const captionPath = dataCadPrefix ? ` data-cad-path="${dataCadPrefix}.caption"` : "";
+    html += `\n    <figcaption${captionPath}>${escapeHtml(placement.caption)}</figcaption>`;
   }
 
   html += "\n  </figure>";
@@ -79,7 +81,7 @@ export function renderContentNode(
       return `<p data-cad-path="${path}.text">${node.text}</p>`;
 
     case "image":
-      return renderImage(node.placement, false);
+      return renderImage(node.placement, false, `${path}.placement`);
 
     case "pullQuote": {
       let html = `<blockquote class="bwc-pullquote">
@@ -95,8 +97,9 @@ export function renderContentNode(
       let html = `<aside class="bwc-key-facts">
     <h3 class="bwc-key-facts__title" data-cad-path="${path}.title">${escapeHtml(node.title)}</h3>
     <dl class="bwc-key-facts__list">`;
-      for (const fact of node.facts) {
-        html += `\n      <dt>${escapeHtml(fact.label)}</dt><dd>${escapeHtml(fact.value)}</dd>`;
+      for (let k = 0; k < node.facts.length; k++) {
+        const fact = node.facts[k];
+        html += `\n      <dt data-cad-path="${path}.facts[${k}].label">${escapeHtml(fact.label)}</dt><dd data-cad-path="${path}.facts[${k}].value">${escapeHtml(fact.value)}</dd>`;
       }
       html += "\n    </dl>\n  </aside>";
       return html;
@@ -105,20 +108,20 @@ export function renderContentNode(
     case "table": {
       let html = "<table>";
       if (node.caption) {
-        html += `\n    <caption>${escapeHtml(node.caption)}</caption>`;
+        html += `\n    <caption data-cad-path="${path}.caption">${escapeHtml(node.caption)}</caption>`;
       }
       if (node.headers.length > 0) {
         html += "\n    <thead><tr>";
-        for (const h of node.headers) {
-          html += `<th>${escapeHtml(h)}</th>`;
+        for (let k = 0; k < node.headers.length; k++) {
+          html += `<th data-cad-path="${path}.headers[${k}]">${escapeHtml(node.headers[k])}</th>`;
         }
         html += "</tr></thead>";
       }
       html += "\n    <tbody>";
-      for (const row of node.rows) {
+      for (let r = 0; r < node.rows.length; r++) {
         html += "\n      <tr>";
-        for (const cell of row) {
-          html += `<td>${escapeHtml(cell)}</td>`;
+        for (let c = 0; c < node.rows[r].length; c++) {
+          html += `<td data-cad-path="${path}.rows[${r}][${c}]">${escapeHtml(node.rows[r][c])}</td>`;
         }
         html += "</tr>";
       }
@@ -129,9 +132,9 @@ export function renderContentNode(
     case "list": {
       const tag = node.ordered ? "ol" : "ul";
       let html = `<${tag}>`;
-      for (const item of node.items) {
+      for (let k = 0; k < node.items.length; k++) {
         // List items may contain inline HTML — pass through
-        html += `\n    <li>${item}</li>`;
+        html += `\n    <li data-cad-path="${path}.items[${k}]">${node.items[k]}</li>`;
       }
       html += `\n  </${tag}>`;
       return html;
@@ -164,7 +167,7 @@ export function renderHero(doc: CanonicalArticleDocument): string {
 /** Render the hero image (separate from hero header for loading priority) */
 export function renderHeroImage(doc: CanonicalArticleDocument): string {
   if (!doc.heroImage) return "";
-  return renderImage(doc.heroImage, true);
+  return renderImage(doc.heroImage, true, "heroImage");
 }
 
 /** Render FAQ section */
@@ -190,11 +193,11 @@ export function renderAuthorBio(doc: CanonicalArticleDocument): string {
     : escapeHtml(doc.author.name);
 
   let html = `<footer class="bwc-author-bio">
-    <p class="bwc-author-bio__name">${authorName}</p>
-    <p class="bwc-author-bio__credentials">${escapeHtml(doc.author.credentials)}</p>`;
+    <p class="bwc-author-bio__name" data-cad-path="author.name">${authorName}</p>
+    <p class="bwc-author-bio__credentials" data-cad-path="author.credentials">${escapeHtml(doc.author.credentials)}</p>`;
 
   if (doc.author.bio) {
-    html += `\n    <p>${escapeHtml(doc.author.bio)}</p>`;
+    html += `\n    <p data-cad-path="author.bio">${escapeHtml(doc.author.bio)}</p>`;
   }
 
   html += "\n  </footer>";

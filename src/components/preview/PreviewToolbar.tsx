@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Monitor, Smartphone, Eye, Code, CheckCircle, AlertTriangle, XCircle } from "lucide-react";
-import { useArticleStore, selectEffectiveValidation } from "@/lib/store/article-store";
+import { useState, useEffect } from "react";
+import { Monitor, Smartphone, Eye, Code, CheckCircle, AlertTriangle, XCircle, MessageSquare, Pencil, Undo2, Redo2 } from "lucide-react";
+import { useArticleStore, selectEffectiveValidation, selectCanUndo, selectCanRedo } from "@/lib/store/article-store";
 import { VersionNavigator } from "./VersionNavigator";
 
 function ToggleButton({
@@ -44,9 +44,31 @@ export function PreviewToolbar() {
     setPreviewMode,
     viewportMode,
     setViewportMode,
+    editingMode,
+    setEditingMode,
+    undo,
+    redo,
   } = useArticleStore();
   const validationResult = useArticleStore(selectEffectiveValidation);
+  const canUndo = useArticleStore(selectCanUndo);
+  const canRedo = useArticleStore(selectCanRedo);
   const [showDetails, setShowDetails] = useState(false);
+
+  // Global keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [undo, redo]);
 
   const iconSize = { width: "14px", height: "14px" };
 
@@ -92,6 +114,66 @@ export function PreviewToolbar() {
           icon={<Smartphone style={iconSize} />}
           label="Mobile"
         />
+      </div>
+
+      {/* Editing mode toggle */}
+      <div style={{ display: "flex", borderRadius: "6px", border: "1px solid #cccccc", overflow: "hidden" }}>
+        <ToggleButton
+          active={editingMode === "chat"}
+          onClick={() => setEditingMode("chat")}
+          icon={<MessageSquare style={iconSize} />}
+          label="Chat"
+        />
+        <ToggleButton
+          active={editingMode === "canvas"}
+          onClick={() => setEditingMode("canvas")}
+          icon={<Pencil style={iconSize} />}
+          label="Canvas"
+        />
+        <ToggleButton
+          active={editingMode === "html"}
+          onClick={() => setEditingMode("html")}
+          icon={<Code style={iconSize} />}
+          label="HTML"
+        />
+      </div>
+
+      {/* Undo / Redo */}
+      <div style={{ display: "flex", gap: "2px" }}>
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "4px 6px",
+            background: "transparent",
+            border: "none",
+            cursor: canUndo ? "pointer" : "default",
+            opacity: canUndo ? 1 : 0.3,
+            color: "#414141",
+          }}
+        >
+          <Undo2 style={iconSize} />
+        </button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Y)"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            padding: "4px 6px",
+            background: "transparent",
+            border: "none",
+            cursor: canRedo ? "pointer" : "default",
+            opacity: canRedo ? 1 : 0.3,
+            color: "#414141",
+          }}
+        >
+          <Redo2 style={iconSize} />
+        </button>
       </div>
 
       {/* Version history navigator */}

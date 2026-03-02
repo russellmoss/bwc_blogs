@@ -3,6 +3,7 @@ import type { CanonicalArticleDocument } from "@/types/article";
 import type { GenerateArticleResponse } from "@/types/claude";
 import type { ContentMapEntry } from "@/types/content-map";
 import type { ValidationResult } from "@/types/api";
+import type { HtmlOverride } from "@/types/renderer";
 import type {
   ArticleEditorState,
   ArticleEditorActions,
@@ -11,6 +12,9 @@ import type {
   ViewportMode,
   EditingMode,
 } from "@/types/ui";
+import { createUndoEntry, pushToStack, popFromStack, setByPath } from "@/lib/undo-redo";
+import { renderArticle } from "@/lib/renderer";
+import { TEMPLATE_VERSION } from "@/lib/renderer/compiled-template";
 
 const initialState: ArticleEditorState = {
   selectedArticleId: null,
@@ -27,6 +31,10 @@ const initialState: ArticleEditorState = {
   previewMode: "preview",
   viewportMode: "desktop",
   editingMode: "chat",
+  undoStack: [],
+  redoStack: [],
+  isCanvasEditing: false,
+  htmlOverrides: [],
 };
 
 export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>(
@@ -78,6 +86,18 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
 
     completeGeneration: (response: GenerateArticleResponse) =>
       set((state) => {
+        // Push undo before replacing document
+        let newUndoStack = state.undoStack;
+        if (state.currentDocument) {
+          const entry = createUndoEntry(
+            state.currentDocument,
+            state.currentHtml,
+            state.htmlOverrides,
+            `v${state.versionHistory.length + 1} — Chat edit`
+          );
+          newUndoStack = pushToStack(state.undoStack, entry);
+        }
+
         const newHistory = [...state.versionHistory];
 
         // Snapshot current document before replacing (if one exists)
@@ -106,6 +126,8 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
           currentHtml: response.html,
           validationResult: response.validationResult,
           versionHistory: newHistory,
+          undoStack: newUndoStack,
+          redoStack: [], // clear redo on new edit
           conversationHistory: [
             ...state.conversationHistory,
             {
@@ -204,6 +226,106 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
     setViewportMode: (mode: ViewportMode) => set({ viewportMode: mode }),
     setEditingMode: (mode: EditingMode) => set({ editingMode: mode }),
 
+    // === Undo/Redo ===
+
+    pushUndo: (label: string) => {
+      const state = get();
+      if (!state.currentDocument) return;
+      const entry = createUndoEntry(
+        state.currentDocument,
+        state.currentHtml,
+        state.htmlOverrides,
+        label
+      );
+      set({
+        undoStack: pushToStack(state.undoStack, entry),
+        redoStack: [], // clear redo on new edit
+      });
+    },
+
+    undo: () => {
+      const state = get();
+      if (state.undoStack.length === 0 || !state.currentDocument) return;
+      // Save current state to redo
+      const currentEntry = createUndoEntry(
+        state.currentDocument,
+        state.currentHtml,
+        state.htmlOverrides,
+        "Before undo"
+      );
+      const [entry, newUndoStack] = popFromStack(state.undoStack);
+      if (!entry) return;
+      set({
+        currentDocument: entry.document,
+        currentHtml: entry.html,
+        htmlOverrides: entry.htmlOverrides,
+        undoStack: newUndoStack,
+        redoStack: pushToStack(state.redoStack, currentEntry),
+      });
+    },
+
+    redo: () => {
+      const state = get();
+      if (state.redoStack.length === 0 || !state.currentDocument) return;
+      // Save current state to undo
+      const currentEntry = createUndoEntry(
+        state.currentDocument,
+        state.currentHtml,
+        state.htmlOverrides,
+        "Before redo"
+      );
+      const [entry, newRedoStack] = popFromStack(state.redoStack);
+      if (!entry) return;
+      set({
+        currentDocument: entry.document,
+        currentHtml: entry.html,
+        htmlOverrides: entry.htmlOverrides,
+        redoStack: newRedoStack,
+        undoStack: pushToStack(state.undoStack, currentEntry),
+      });
+    },
+
+    // === Canvas Edit ===
+
+    applyCanvasEdit: (cadPath: string, newText: string) => {
+      const state = get();
+      if (!state.currentDocument) return;
+      const updatedDoc = setByPath(state.currentDocument, cadPath, newText);
+      // Do NOT re-render HTML here — isCanvasEditing suppresses iframe updates
+      set({ currentDocument: updatedDoc });
+    },
+
+    setIsCanvasEditing: (active: boolean) => {
+      const state = get();
+      if (!active && state.currentDocument) {
+        // Leaving canvas mode — re-render HTML from canonical doc
+        const result = renderArticle({
+          document: state.currentDocument,
+          htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
+          templateVersion: TEMPLATE_VERSION,
+        });
+        set({ isCanvasEditing: false, currentHtml: result.html });
+      } else {
+        set({ isCanvasEditing: active });
+      }
+    },
+
+    // === HTML Overrides ===
+
+    applyHtmlOverride: (override: HtmlOverride) =>
+      set((state) => {
+        const existing = state.htmlOverrides.findIndex((o) => o.path === override.path);
+        const newOverrides = [...state.htmlOverrides];
+        if (existing >= 0) {
+          newOverrides[existing] = override;
+        } else {
+          newOverrides.push(override);
+        }
+        return { htmlOverrides: newOverrides };
+      }),
+
+    clearHtmlOverrides: () => set({ htmlOverrides: [] }),
+
     // Reset
     resetEditor: () => set(initialState),
   })
@@ -235,4 +357,12 @@ export function selectIsViewingHistory(
   state: ArticleEditorState
 ): boolean {
   return state.activeVersionNumber !== null;
+}
+
+export function selectCanUndo(state: ArticleEditorState): boolean {
+  return state.undoStack.length > 0;
+}
+
+export function selectCanRedo(state: ArticleEditorState): boolean {
+  return state.redoStack.length > 0;
 }

@@ -2,6 +2,7 @@ import type { CanonicalArticleDocument } from "./article";
 import type { ConversationMessage, GenerateArticleResponse } from "./claude";
 import type { ContentMapEntry } from "./content-map";
 import type { ValidationResult } from "./api";
+import type { HtmlOverride } from "./renderer";
 
 // === UI Mode Types ===
 
@@ -19,6 +20,16 @@ export interface ArticleVersion {
   html: string;
   validationResult: ValidationResult | null;
   conversationIndex: number;
+}
+
+// === Undo/Redo ===
+
+export interface UndoEntry {
+  document: CanonicalArticleDocument;
+  html: string;
+  htmlOverrides: HtmlOverride[];
+  timestamp: string;
+  label: string;
 }
 
 // === Article Editor State ===
@@ -49,6 +60,14 @@ export interface ArticleEditorState {
   previewMode: PreviewMode;
   viewportMode: ViewportMode;
   editingMode: EditingMode;
+
+  // Undo/Redo
+  undoStack: UndoEntry[];
+  redoStack: UndoEntry[];
+
+  // Canvas edit
+  isCanvasEditing: boolean;
+  htmlOverrides: HtmlOverride[];
 }
 
 export interface ArticleEditorActions {
@@ -78,6 +97,19 @@ export interface ArticleEditorActions {
   setPreviewMode: (mode: PreviewMode) => void;
   setViewportMode: (mode: ViewportMode) => void;
   setEditingMode: (mode: EditingMode) => void;
+
+  // Undo/Redo
+  pushUndo: (label: string) => void;
+  undo: () => void;
+  redo: () => void;
+
+  // Canvas edit
+  applyCanvasEdit: (cadPath: string, newText: string) => void;
+  setIsCanvasEditing: (active: boolean) => void;
+
+  // HTML overrides
+  applyHtmlOverride: (override: HtmlOverride) => void;
+  clearHtmlOverrides: () => void;
 
   // Reset
   resetEditor: () => void;
