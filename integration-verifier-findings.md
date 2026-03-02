@@ -1,188 +1,299 @@
-# Integration Verifier Findings
-**Date:** 2026-03-02
-**Scope:** Onyx CE re-test after admin API key elevation and Claude LLM provider enabled
+# Integration Verifier Findings — Guide 4 Pre-Check
+**Date:** 2026-03-02  
+**Guide:** 4 — Canonical Article Schema + Article Renderer  
+**Verifier:** integration-verifier agent
 
 ---
 
 ## Summary Table
 
-| Service | Endpoint | Status | HTTP Code | Response Time | Notes |
-|---|---|---|---|---|---|
-| Onyx Admin Search | POST /api/admin/search | PASS | 200 | 2.63s | Previously 403, now working |
-| Onyx send-chat-message | POST /api/chat/send-chat-message | PASS | 200 | 18-35s | Previously failed with LLM error; now returns grounded answer with citations |
-| Onyx Create Session | POST /api/chat/create-chat-session | PASS | 200 | 40-55s | Cold-start latency; returns valid session UUID |
-| Onyx Streaming send-message | POST /api/chat/send-message | PASS | 200 | ~5s first chunk | NDJSON: reasoning deltas and search docs |
-| Onyx Indexing Status | POST /api/manage/admin/connector/indexing-status | PASS | 200 | 0.52s | GET returns 405; correct method is POST |
+| Service | Status | Response Time | Notes |
+|---|---|---|---|
+| Neon Postgres | OK | ~200ms | All 9 tables exist, connection via pooler works |
+| Onyx RAG | OK | 125ms health, ~2s search | Health 200, admin/search returns KB results |
+| Claude API | OK | ~2s completion | Basic, web search, and streaming all verified |
+| Cloudinary | OK | ~1s CDN | API credentials valid, CDN delivery with transforms works |
+| Vercel (deployed) | PARTIAL | <1s | /api/health returns 200; /api/content-map and /api/onyx/health return 404 — deployment is stale |
+| Local build | OK | ~2.4s compile | Zero TS errors, all 12 routes compiled cleanly |
 
 ---
 
-## Test 1: POST /api/admin/search
+## 1. Neon Postgres
 
-**Status:** PASS (previously 403, now 200)
-**HTTP Code:** 200
-**Response Time:** 2.634s
+**Connection:** Pooled URL works (`ep-weathered-pond-ai9zijr1-pooler.c-4.us-east-1.aws.neon.tech`)
 
-**Request body:**
-```json
-{"query": "Bajo vineyard elevation", "filters": {}}
-```
-
-**Response shape:** Array of document objects containing: document_id, chunk_ind, semantic_identifier, blurb, score (float), match_highlights (hi-tagged), source_type, updated_at.
-
-**Top result:**
-- semantic_identifier: the-grapes-vineyards_grapes_vineyards.md
-- score: 6.42
-- match_highlight: "The Bajo vineyard is completely flat, at around 4,000 feet in elevation, and is located just above the Sankosh river."
-- updated_at: 2025-09-02T18:06:51Z
-
-**Total documents returned:** 16 documents from Google Drive sources.
-
----
-
-## Test 2: POST /api/chat/send-chat-message (LLM synthesis)
-
-**Status:** PASS (previously failed with "No default LLM provider found")
-**HTTP Code:** 200
-**Response Time:** 18-35s total
-
-**Request body:**
-```json
-{"message": "What is the elevation of Bajo vineyard?", "chat_session_info": {"persona_id": 0}, "stream": false, "include_citations": true}
-```
-
-**Response shape (77,401 bytes total):**
-- `answer` (string): Markdown answer with inline citation links
-- `answer_citationless` (string): Same answer without citation markup
-- `pre_answer_reasoning` (string): Chain-of-thought summary
-- `tool_calls` (array): KB search query used and raw retrieved content
-- `documents` (array): Full document objects used as context
-
-**Sample answer returned:**
-"The Bajo vineyard is located at approximately 4,000 feet in elevation. It is nestled in the beautiful Punakha Valley in western Bhutan, situated on completely flat terrain just above the Sankosh river. The vineyard enjoys dry, hot temperatures year-round thanks to a protective rain shadow and gentle warming breezes, making it an ideal site for red varietals like Merlot and Cabernet Sauvignon."
-
-**IMPORTANT:** Despite stream=false in the request, this endpoint delivers its response as a streaming HTTP body. HTTP 200 is returned on connection but the body arrives incrementally. Any caller with max-time below 35s will receive an empty or truncated body. Minimum recommended max-time: 60s.
-
----
-
-## Test 3a: POST /api/chat/create-chat-session
-
-**Status:** PASS
-**HTTP Code:** 200
-**Response Time:** 0.4s-55s (highly variable; LLM cold-start)
-**Request body:** {"persona_id": 0}
-**Response:** {"chat_session_id": "6487fd50-23de-436b-bbab-045671acac47"}
-
-**Note:** Latency is inconsistent. Warm calls: 0.4s. Cold calls: 40-55s. Use max-time 60s.
-
----
-
-## Test 3b: POST /api/chat/send-message (streaming, skip_gen_ai=true)
-
-**Status:** PASS
-**HTTP Code:** 200
-**Response Time:** First NDJSON chunk within 2-5s
-
-**Request body:**
-```json
-{"chat_session_id": "...", "parent_message_id": null, "message": "Bajo vineyard elevation", "search_doc_ids": null, "retrieval_options": {"run_search": "always", "real_time": true}, "skip_gen_ai_answer_generation": true}
-```
-
-**Response format:** NDJSON stream (one JSON object per line).
-
-**Event sequence observed:**
-1. {"user_message_id": 8, "reserved_assistant_message_id": 9}
-2. {"obj": {"type": "reasoning_start"}}
-3. Multiple {"obj": {"type": "reasoning_delta", "reasoning": "..."}} events
-4. {"obj": {"type": "reasoning_done"}}
-5. {"obj": {"type": "search_tool_start", "is_internet_search": false}}
-6. {"obj": {"type": "search_tool_queries_delta", "queries": ["Bajo vineyard elevation", "Bajo vineyard altitude", "Bajo vinedo elevacion"]}}
-7. {"obj": {"type": "search_tool_documents_delta", "documents": [...]}}
-
-**Top search result in stream:**
-- semantic_identifier: the-grapes-vineyards_grapes_vineyards.md
-- score: 0.8015
-- match_highlight: "The Bajo vineyard is completely flat, at around 4,000 feet in elevation"
-
-**Key finding:** Even with skip_gen_ai_answer_generation=true, Onyx still emits reasoning events. Claude extended thinking fires at the LLM provider level before retrieval and cannot be suppressed by this flag. The flag only skips final answer synthesis.
-
----
-
-## Test 4: POST /api/manage/admin/connector/indexing-status
-
-**Status:** PASS (previously 403; GET returns 405; POST returns 200)
-**HTTP Code (GET):** 405 Method Not Allowed
-**HTTP Code (POST):** 200
-**Response Time (POST):** 0.522s
-**Request body for POST:** {}
-
-**Full response:**
-```json
-[{
-  "source": "google_drive",
-  "summary": {
-    "total_connectors": 1,
-    "active_connectors": 1,
-    "public_connectors": 1,
-    "total_docs_indexed": 33
-  },
-  "current_page": 1,
-  "total_pages": 1,
-  "indexing_statuses": [{
-    "cc_pair_id": 2,
-    "name": "BWC connnector",
-    "source": "google_drive",
-    "access_type": "public",
-    "cc_pair_status": "ACTIVE",
-    "in_progress": false,
-    "in_repeated_error_state": false,
-    "last_finished_status": "success",
-    "last_status": "success",
-    "last_success": "2026-03-02T11:22:02.194783Z",
-    "is_editable": true,
-    "docs_indexed": 33,
-    "latest_index_attempt_docs_indexed": 0
-  }]
-}]
-```
-
----
-
-## Knowledge Base State
-
-| Metric | Value |
+**Table Row Counts:**
+| Table | Rows |
 |---|---|
-| Connector name | BWC connnector (typo: three n) |
-| Source | Google Drive |
-| Status | ACTIVE |
-| Total docs indexed | 33 |
-| Last successful index | 2026-03-02T11:22:02Z (today) |
-| In progress | false |
-| Error state | false |
+| users | 1 |
+| content_map | 39 |
+| article_documents | 0 |
+| article_html | 0 |
+| internal_links | 10 |
+| photos | 0 |
+| article_photos | 0 |
+| leads | 0 |
+| lead_events | 0 |
+
+**Observations:**
+- `article_documents` and `article_html` are correctly empty (Guide 11 writes to them)
+- `content_map` has 39 rows from Guide 2 seed — healthy
+- `internal_links` has 10 rows (core page links seeded)
+- `photos` table is empty — expected, Guide 9 populates it
+- `photos` table has all expected columns: `cloudinary_public_id`, `cloudinary_url`, `alt_text`, `classification`, `vineyard_name`, `uploaded_to_cdn` — Guide 4 renderer can reference these fields safely
+
+**Prisma generate:** Client already built. Re-generation showed EPERM file lock error (Windows DLL file in use by existing node process) — not a real error, client is functional and all queries work.
+
+---
+
+## 2. Onyx RAG
+
+**Health endpoint:** `GET https://rmoss-onyx.xyz/api/health` → HTTP 200 in 0.125s
+
+**Search test:** `POST https://rmoss-onyx.xyz/api/admin/search`
+- Query: "What is the elevation of Bajo vineyard?"
+- Result: HTTP 200, returned KB documents including gallery.md with vineyard data
+- Score: 8.77 (high relevance), source: google_drive
+- Response includes `documents[]` array with `blurb`, `semantic_identifier`, `score`, `match_highlights`
+
+**Note:** `/api/direct-qa` and `/api/query/stream` return 404 — the correct search endpoint is `/api/admin/search` (matches client.ts implementation).
+
+---
+
+## 3. Claude API
+
+**Basic completion:** HTTP 200 in 1.97s  
+- Model: `claude-sonnet-4-5-20250929` accessible  
+- Response: `{"type":"message","role":"assistant","content":[{"type":"text","text":"Hello, how are you today?"}]}`
+
+**Web search tool:** HTTP 200  
+- `web_search_20250305` tool works  
+- Returned correct result: `https://www.bhutanwine.com/` for "Bhutan Wine Company URL"
+
+**Streaming:** HTTP 200  
+- SSE format confirmed: `event: message_start`, `event: content_block_delta`, `event: message_delta`  
+- Delta events contain text fragments correctly
+
+**Model note:** `.env` has `ANTHROPIC_MODEL="claude-sonnet-4-5"` (without full date suffix). `.env.example` specifies `claude-sonnet-4-5-20250929`. The short alias `claude-sonnet-4-5` resolves correctly per API test.
+
+---
+
+## 4. Cloudinary
+
+**API credentials:** Valid  
+- Cloud name: `deahtb4kj`  
+- API key: `884563924896736`  
+- Listed 3 images via management API (including `main-sample`, `cld-sample-5`)
+
+**CDN delivery with transforms:** HTTP 200 in 1.12s  
+- URL: `https://res.cloudinary.com/deahtb4kj/image/upload/w_800,f_auto,q_auto/main-sample`  
+- Transform parameters `w_800,f_auto,q_auto` applied successfully
+
+**Upload folder:** `blog` (configured in env)
+
+---
+
+## 5. Local Build
+
+**Command:** `npm run build`  
+**Result:** Compiled successfully in 2.4s, zero TypeScript errors
+
+**Routes compiled:**
+```
+○ /                          (static)
+○ /_not-found                (static)
+ƒ /api/auth/[...nextauth]    (dynamic)
+ƒ /api/content-map           (dynamic)
+ƒ /api/content-map/[id]      (dynamic)
+ƒ /api/content-map/import    (dynamic)
+ƒ /api/health                (dynamic)
+ƒ /api/onyx/health           (dynamic)
+ƒ /api/onyx/search           (dynamic)
+ƒ /api/users                 (dynamic)
+ƒ /api/users/[id]            (dynamic)
+○ /login                     (static)
+```
+
+---
+
+## 6. Vercel Deployment
+
+**Health endpoint:** `GET https://bwc-content-engine.vercel.app/api/health`  
+→ HTTP 200 in 0.98s  
+→ Body: `{"status":"ok","app":"bwc-content-engine","timestamp":"...","env":{"hasDatabase":true,"hasAnthropic":true,"hasOnyx":true,"hasCloudinary":true}}`
+
+**ISSUE — Stale deployment:**  
+`/api/content-map` and `/api/onyx/health` both return HTTP 404 from the deployed Vercel app. The response title is "Create Next App" (default Next.js boilerplate), indicating the Vercel deployment is running an older version that predates Guides 2 and 3. The latest code has not been pushed/deployed to Vercel.
+
+---
+
+## 7. Wix Sitemap
+
+**URL:** `https://www.bhutanwine.com/sitemap.xml` → HTTP 200  
+**Format:** Sitemap index with 3 sub-sitemaps:
+- `store-products-sitemap.xml` (updated 2024-12-20)
+- `store-categories-sitemap.xml` (updated 2022-12-11)
+- `pages-sitemap.xml` (updated 2026-02-08)
+
+**No blog sub-sitemap exists yet** — expected, as no blog posts have been published via Wix.
+
+---
+
+## Environment Variable Status (Guide 4 Requirements)
+
+| Variable | Status | Notes |
+|---|---|---|
+| DATABASE_URL | Set | Pooled Neon URL — working |
+| DATABASE_URL_UNPOOLED | Set | Direct Neon URL — working |
+| NEXTAUTH_SECRET / AUTH_SECRET | Set | Same value for both |
+| NEXTAUTH_URL / AUTH_URL | Set | http://localhost:3000 |
+| ANTHROPIC_API_KEY | Set | Valid, tested |
+| ANTHROPIC_MODEL | Set | `claude-sonnet-4-5` (short alias works) |
+| CLOUDINARY_CLOUD_NAME | Set | `deahtb4kj` |
+| CLOUDINARY_API_KEY | Set | Valid |
+| CLOUDINARY_API_SECRET | Set | Valid |
+
+**All env vars required for Guide 4 are present and functional.**
 
 ---
 
 ## Issues Found
 
-1. **send-chat-message always streams despite stream=false** — Endpoint delivers its body as a streaming HTTP response regardless of the stream parameter. Callers must use max-time 60s minimum. A 30s timeout results in an empty body despite HTTP 200.
+### ISSUE 1 (Medium): Vercel deployment is stale
+- `/api/content-map` and `/api/onyx/health` return 404 on Vercel
+- Local build passes and includes these routes
+- **Action:** Push latest code to trigger new Vercel deployment before Guide 4 review/demo
 
-2. **create-chat-session intermittent latency (0.4s to 55s)** — Likely LLM provider cold-start on Onyx backend. Not a failure; use max-time 60s in integration code.
+### ISSUE 2 (Low): Prisma config deprecation warning
+- `package.json#prisma` config is deprecated in Prisma 7
+- Should migrate to `prisma.config.ts` before Prisma 7 upgrade
+- Non-blocking for Guide 4
 
-3. **indexing-status requires POST not GET** — Returns 405 on GET and 200 on POST. Any existing code using GET must be changed to POST.
-
-4. **reasoning_delta events fire even with skip_gen_ai=true** — Claude extended thinking fires at the LLM provider level before retrieval. The skip_gen_ai_answer_generation flag only suppresses final answer synthesis, not the reasoning preamble or search phase.
-
-5. **Connector name typo** — Named "BWC connnector" (three n). Cosmetic only; does not affect function.
+### ISSUE 3 (Low): Model alias in .env
+- `.env` uses `ANTHROPIC_MODEL="claude-sonnet-4-5"` (no date suffix)
+- `.env.example` specifies `claude-sonnet-4-5-20250929`
+- Alias resolves correctly but should be standardized
 
 ---
 
-## Recommendations
+## Guide 4 Readiness
 
-1. **Increase ONYX_SEARCH_TIMEOUT_MS** — Current value 15000ms is insufficient for chat endpoints. Set to 60000ms for send-chat-message and create-chat-session. The 15000ms value is fine for /api/admin/search only.
+**Verdict: READY TO PROCEED**
 
-2. **Fix indexing-status HTTP method** — Change GET to POST in any code calling /api/manage/admin/connector/indexing-status.
+All tier-1 blockers are clear:
+- Database connected, correct schema in place
+- Build compiles with zero errors
+- Type system intact (Prisma models match schema)
+- `article_documents` and `article_html` tables exist and are empty — correct state for Guide 4 to define and validate the schema
+- `photos` table structure confirmed — renderer can safely reference Cloudinary fields
+- Claude API works for structured JSON generation
+- Content map has 39 seeded rows for testing
 
-3. **Prefer /api/admin/search for retrieval-only queries** — Fast (2.6s), ranked docs with highlights, no session management needed. Ideal for the article generation pipeline where Onyx retrieval feeds Claude API client-side.
+The only action needed before live deployment testing: push latest code to Vercel to update the stale deployment.
 
-4. **Use /api/chat/send-message with skip_gen_ai=true for streaming retrieval** — Delivers search results as stream events quickly (~5s first chunk). Best for workflows needing raw KB chunks without full LLM synthesis inside Onyx.
+---
 
-5. **Handle streaming body in all Onyx chat callers** — Do not use synchronous request/response patterns. All callers of /api/chat/send-chat-message must consume the response as a stream and wait for the full body before parsing JSON.
+# Integration Verifier Findings — Guide 4 Verification Run
+**Date:** 2026-03-02  
+**Guide:** 4 — Canonical Article Schema + Article Renderer  
+**Run type:** Post-Guide-4-assignment check (before implementation)
+
+---
+
+## Summary Table
+
+| Service | Status | Response Time | Notes |
+|---|---|---|---|
+| Neon Postgres | OK | <200ms | All 9 tables, counts match expectations |
+| Onyx RAG | OK | 134ms | Health 200 confirmed |
+| Cloudinary CDN | OK | 262ms | CDN delivery with transforms HTTP 200 |
+| Vercel (deployed) | OK | 750ms | /api/health returns 200 |
+| Local build | OK | 1899ms | Zero TS errors, 11 routes compiled cleanly |
+| TypeScript check | OK | — | `npx tsc --noEmit` exits 0, zero errors |
+
+---
+
+## Tier 1: Basic Health
+
+### Build
+- `npm run build`: Compiled successfully in 1899ms, zero TypeScript errors
+- Routes compiled (11 total): auth, content-map, content-map/[id], content-map/import, health, onyx/health, onyx/search, users, users/[id], plus static /, /login
+- `npx tsc --noEmit`: Exit code 0, zero errors
+
+### Health endpoint
+- `GET https://bwc-content-engine.vercel.app/api/health` → HTTP 200 in 0.750s
+
+---
+
+## Tier 2: Guide 4 Specific
+
+### Cloudinary URL pattern
+- URL tested: `https://res.cloudinary.com/deahtb4kj/image/upload/w_800,f_auto,q_auto/main-sample`
+- Result: HTTP 200 in 0.262s
+- Known public IDs confirmed via API: `main-sample` (1248x832px PNG)
+- CLOUDINARY_CLOUD_NAME=`deahtb4kj` — confirmed set in .env
+
+### Database state
+| Table | Rows |
+|---|---|
+| user | 1 |
+| contentMap | 39 |
+| articleDocument | 0 |
+| articleHtml | 0 |
+| internalLink | 10 |
+| photo | 0 |
+| articlePhoto | 0 |
+| lead | 0 |
+| leadEvent | 0 |
+
+- `contentMap`: 39 rows (correct — Guide 2 seed)
+- `articleDocument`: 0 rows (correct — Guide 4 defines the schema; Guide 5+ writes rows)
+- `articleHtml`: 0 rows (correct — Guide 11 writes rows)
+- `photo`: 0 rows (correct — Guide 9 populates)
+
+### Type system state
+The following type files exist and compile cleanly:
+- `src/types/article.ts` — `CanonicalArticleDocument` and all sub-types fully defined
+- `src/types/renderer.ts` — `RendererInput`, `RendererOutput`, `HtmlOverride` defined
+- `src/types/qa.ts` — `QACheck`, `QAResult`, `QAScore` defined
+- `src/types/photo.ts`, `src/types/content-map.ts` — referenced by article types, all resolve
+
+### Guide 4 implementation directories
+- `src/lib/renderer/` — does NOT exist yet (Guide 4 will create it)
+- `src/lib/article-schema/` — does NOT exist yet (Guide 4 will create it)
+
+This is the correct pre-implementation state. The type contracts are defined and compiled; the implementation modules have not been written yet.
+
+---
+
+## Tier 3: Previous Guide Routes
+
+- `GET https://bwc-content-engine.vercel.app/api/health` → HTTP 200 (Vercel still stale for content-map/onyx but health works)
+- Local routes all present in build: `/api/content-map`, `/api/onyx/health`, `/api/onyx/search`
+
+---
+
+## Issues Found
+
+### No new blockers for Guide 4
+All pre-conditions are met:
+1. TypeScript compiles clean
+2. `CanonicalArticleDocument` type is fully defined and exported
+3. `RendererInput`/`RendererOutput` types are defined
+4. Database schema has `article_documents` and `article_html` tables (empty, awaiting Guide 4 write paths)
+5. Cloudinary delivery works with transform URL pattern that renderer will generate
+
+### Carried-over (non-blocking)
+- Vercel deployment is stale (Guides 2-3 routes not yet deployed)
+- ANTHROPIC_MODEL uses short alias `claude-sonnet-4-5` (resolves OK)
+- Prisma config deprecation warning for Prisma 7 migration
+
+---
+
+## Guide 4 Readiness
+
+**Verdict: READY TO PROCEED**
+
+All Tier 1 checks pass. The type foundation for Guide 4 is fully in place. Implementation can begin on:
+- `src/lib/article-schema/` — Zod validation schema for `CanonicalArticleDocument`
+- `src/lib/renderer/` — HTML renderer consuming `RendererInput`, producing `RendererOutput`

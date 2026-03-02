@@ -1,0 +1,151 @@
+{
+  "version": "1.0",
+  "articleId": 1,
+  "slug": "traminette-grape-guide",
+  "articleType": "spoke",
+  "hubId": 1,
+  "title": "Traminette: The Aromatic White Grape Thriving in Bhutan's Himalayas",
+  "metaTitle": "Traminette Grape Guide | Bhutan Wine Company Journal",
+  "metaDescription": "Discover Traminette, the aromatic white grape producing perfumed wines in Bhutan's Himalayas. Growing conditions, tasting notes, and where to find Ser Kem.",
+  "canonicalUrl": "https://www.bhutanwine.com/post/traminette-grape-guide",
+  "publishDate": "2026-03-01",
+  "modifiedDate": "2026-03-01",
+  "author": {
+    "name": "Michael Smith",
+    "credentials": "WSET Diploma, MW Candidate",
+    "bio": "Michael is a wine writer and MW candidate with extensive experience in emerging wine regions.",
+    "linkedinUrl": "https://www.linkedin.com/in/example"
+  },
+  "executiveSummary": "Traminette is an aromatic white hybrid grape that has emerged as one of Bhutan Wine Company's most expressive varieties, producing a perfumed Gewurztraminer-like wine from vineyards in the eastern Himalayas.",
+  "heroImage": {
+    "photoId": null,
+    "src": "https://res.cloudinary.com/deahtb4kj/image/upload/w_1200,f_auto,q_auto/main-sample",
+    "alt": "Traminette grape clusters showing golden green color on VSP trained vines at the Norzenthang vineyard in eastern Bhutan",
+    "caption": "Traminette clusters at Norzenthang vineyard, eastern Bhutan.",
+    "classification": "informative",
+    "width": 1200,
+    "height": 800
+  },
+  "sections": [
+    {
+      "id": "section-1",
+      "heading": "The Story of Traminette in Bhutan",
+      "headingLevel": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "s1-p1",
+          "text": "The Traminette vines at Norzenthang present a striking sight in late summer — clusters of golden-green grapes hanging in tight, compact bunches against the deep green canopy of the VSP trellises. When you walk between the rows in the weeks before harvest, the perfume is unmistakable: lychee, rose petal, and a honeyed spice that intensifies as the afternoon sun warms the eastern slopes. This is Traminette at its most expressive, a grape that has found an unlikely but extraordinary home in the Himalayas. The variety was first planted here as part of Bhutan Wine Company's experimental program, when founder's vision guided the selection of varietals that could thrive at extreme elevation. What began as an experiment has become one of BWC's signature expressions — a wine that captures the essence of high-altitude viticulture in every glass. The aromatic intensity of Traminette grown at these elevations surpasses what is typically achieved in more temperate growing regions, a testament to the unique terroir of eastern Bhutan."
+        },
+        {
+          "type": "paragraph",
+          "id": "s1-p2",
+          "text": "The history of Traminette in Bhutan traces back to the early trials conducted at the government agricultural research station in Wangdue Phodrang. These initial plantings demonstrated that certain cold-hardy hybrid varieties could not only survive but thrive at elevations that would be considered extreme by conventional viticultural standards. The research team, working in collaboration with Cornell University viticulturists who had originally developed the Traminette cultivar, identified the eastern valleys as the most promising sites for expansion. The decision to plant at Norzenthang was driven by microclimate data that showed the site receiving optimal sun exposure during the critical ripening period while benefiting from the cooling influence of mountain air drainage patterns that moderate afternoon temperatures."
+        },
+        {
+          "type": "pullQuote",
+          "id": "s1-pq1",
+          "text": "The perfume is unmistakable — lychee, rose petal, and a honeyed spice that intensifies as the afternoon sun warms the eastern slopes.",
+          "attribution": null
+        }
+      ]
+    },
+    {
+      "id": "section-2",
+      "heading": "Where Traminette Thrives in the Himalayas",
+      "headingLevel": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "s2-p1",
+          "text": "The <a href=\"https://www.bhutanwine.com/the-grapes-vineyards\">BWC vineyard sites</a> in eastern Bhutan offer conditions that are ideal for aromatic white varieties. The combination of high elevation, dramatic diurnal temperature variation, and intense UV radiation creates a growing environment that amplifies the aromatic compounds — terpenes and thiols — that define Traminette's character. At Norzenthang, the vines sit at approximately 2,250 meters above sea level, experiencing daytime temperatures that promote sugar accumulation and nighttime temperatures that preserve the delicate acidity essential to balanced aromatic wines. The glacial alluvial clay loam soils provide excellent drainage while retaining enough moisture to sustain the vines through the dry pre-monsoon period. This terroir produces wines with a concentration and aromatic purity that is difficult to achieve at lower elevations."
+        },
+        {
+          "type": "paragraph",
+          "id": "s2-p2",
+          "text": "The vineyard management practices at Norzenthang reflect a philosophy that prioritizes fruit quality over yield. Traminette vines are trained on a vertical shoot positioning system that maximizes canopy exposure to sunlight while allowing for adequate air circulation — critical in the monsoon season when botrytis pressure can threaten aromatic varieties. The vines are spaced at 1.5 meters within the row and 2.2 meters between rows, a density that encourages root competition and limits berry size, concentrating the aromatic precursors that make Traminette so distinctive. Harvest is conducted entirely by hand, typically in early October when sugar levels reach an optimal balance with the natural acidity preserved by the cool mountain nights."
+        },
+        {
+          "type": "keyFacts",
+          "id": "s2-kf1",
+          "title": "Key Growing Facts",
+          "facts": [
+            { "label": "Elevation", "value": "2,250m above sea level" },
+            { "label": "Soil Type", "value": "Glacial alluvial clay loam" },
+            { "label": "Climate", "value": "Continental with monsoon influence" },
+            { "label": "Planted Varieties", "value": "Traminette, Riesling, Sauvignon Blanc" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "section-3",
+      "heading": "Tasting Notes and Wine Character",
+      "headingLevel": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "s3-p1",
+          "text": "Bhutan Wine Company's Ser Kem Traminette is a wine of remarkable aromatic intensity and structural balance. On the nose, it opens with pronounced notes of lychee and rose petal, layered with white spice, honeysuckle, and a distinctive minerality that speaks to the high-altitude terroir. The palate delivers a richly textured wine with the weight and concentration one expects from low-yielding mountain vines, balanced by a crisp, almost electric acidity that is the hallmark of grapes grown above 2,000 meters. The finish is long and spice-driven, with lingering notes of ginger and white pepper that distinguish it from its Gewurztraminer parent. This is not a wine that fades quietly — it commands attention and rewards contemplation. The <a href=\"https://www.bhutanwine.com/our-wine\">BWC wine portfolio</a> showcases this variety as one of its most distinctive offerings, a wine unlike anything else being produced in Asia."
+        },
+        {
+          "type": "paragraph",
+          "id": "s3-p2",
+          "text": "International wine critics have taken note of Traminette's potential in Bhutan. The <a href=\"https://www.oiv.int/\">International Organisation of Vine and Wine (OIV)</a> has recognized the significance of high-altitude viticulture programs in developing nations, and BWC's Traminette program represents one of the most ambitious expressions of this movement. According to the <a href=\"https://www.decanter.com/wine-travel/bhutan-wine/\">Decanter's coverage of emerging Asian wine regions</a>, Bhutan's unique position at the intersection of Himalayan geography and an organic-by-mandate agricultural policy creates conditions found nowhere else in the winemaking world. The <a href=\"https://www.jancisrobinson.com/\">Jancis Robinson MW assessment</a> of frontier wine regions highlights the importance of site selection and varietal matching — principles that guided BWC's decision to plant Traminette at Norzenthang."
+        },
+        {
+          "type": "paragraph",
+          "id": "s3-p3",
+          "text": "The winemaking process for Ser Kem Traminette reflects the same attention to detail found in the vineyard. After the hand-harvested clusters arrive at the winery, they undergo a gentle whole-cluster pressing that minimizes skin contact and preserves the delicate floral aromatics. Fermentation takes place in temperature-controlled stainless steel tanks at a cool fifteen degrees Celsius, a slow process that extends over three weeks and captures the full spectrum of aromatic compounds. The resulting wine spends four months on fine lees with periodic stirring to build textural complexity before bottling."
+        }
+      ]
+    },
+    {
+      "id": "section-4",
+      "heading": "Visiting the Vineyards",
+      "headingLevel": 2,
+      "content": [
+        {
+          "type": "paragraph",
+          "id": "s4-p1",
+          "text": "For those planning to <a href=\"https://www.bhutanwine.com/visit-us\">visit BWC's vineyard sites</a>, the eastern vineyards offer a particularly memorable experience during the pre-harvest period from August through October. The Traminette rows at Norzenthang are accessible as part of BWC's guided vineyard tours, which provide an intimate look at high-altitude viticulture practices and the challenges of growing wine grapes in the Himalayas. Visitors can arrange tastings through the <a href=\"https://www.bhutanwine.com/2024-inquiry-request\">BWC allocation inquiry process</a>, which provides access to current and library vintages including the Ser Kem Traminette. The <a href=\"https://www.bhutanwine.com/about-us\">story of BWC's founding</a> adds depth to the tasting experience, connecting each wine to the broader narrative of Bhutan's emergence as a wine-producing nation."
+        },
+        {
+          "type": "paragraph",
+          "id": "s4-p2",
+          "text": "The vineyard experience extends beyond the tasting room. BWC has developed an interpretive trail that winds through the Traminette blocks, with information panels explaining the vine training systems, soil profiles, and the seasonal rhythms of Himalayan viticulture. During harvest season, visitors can participate in hand-picking sessions that offer a tactile connection to the winemaking process. The cellar door team provides detailed technical notes for each vintage, including fermentation temperatures, residual sugar levels, and the blending decisions that shape the final expression of each wine. For serious wine enthusiasts and trade professionals, BWC offers extended vineyard immersion programs that include multiple days of guided exploration across all vineyard sites."
+        }
+      ]
+    }
+  ],
+  "faq": [
+    {
+      "question": "What does Traminette wine taste like?",
+      "answer": "Traminette produces an aromatic white wine with pronounced notes of lychee, rose petal, and white spice — similar in profile to Gewurztraminer, which is one of its parent grapes. BWC's Ser Kem Traminette expresses these aromatics with a crisp high-altitude acidity that balances the richness."
+    },
+    {
+      "question": "Where are Traminette grapes grown in Bhutan?",
+      "answer": "Traminette is grown primarily at BWC's Norzenthang vineyard site in eastern Bhutan, at approximately 2,250 meters above sea level. The glacial alluvial clay loam soils and dramatic diurnal temperature variation create ideal conditions for aromatic white varieties."
+    }
+  ],
+  "internalLinks": [
+    { "targetUrl": "https://www.bhutanwine.com/the-grapes-vineyards", "targetArticleId": null, "targetCorePage": "https://www.bhutanwine.com/the-grapes-vineyards", "anchorText": "BWC vineyard sites", "linkType": "to-core-page", "sectionId": "section-2" },
+    { "targetUrl": "https://www.bhutanwine.com/our-wine", "targetArticleId": null, "targetCorePage": "https://www.bhutanwine.com/our-wine", "anchorText": "BWC wine portfolio", "linkType": "to-core-page", "sectionId": "section-3" },
+    { "targetUrl": "https://www.bhutanwine.com/visit-us", "targetArticleId": null, "targetCorePage": "https://www.bhutanwine.com/visit-us", "anchorText": "visit BWC's vineyard sites", "linkType": "to-core-page", "sectionId": "section-4" },
+    { "targetUrl": "https://www.bhutanwine.com/2024-inquiry-request", "targetArticleId": null, "targetCorePage": "https://www.bhutanwine.com/2024-inquiry-request", "anchorText": "BWC allocation inquiry process", "linkType": "to-core-page", "sectionId": "section-4" },
+    { "targetUrl": "https://www.bhutanwine.com/about-us", "targetArticleId": null, "targetCorePage": "https://www.bhutanwine.com/about-us", "anchorText": "story of BWC's founding", "linkType": "to-core-page", "sectionId": "section-4" }
+  ],
+  "externalLinks": [
+    { "url": "https://www.oiv.int/", "anchorText": "International Organisation of Vine and Wine (OIV)", "trustTier": "primary", "sourceName": "OIV", "sectionId": "section-3" },
+    { "url": "https://www.decanter.com/wine-travel/bhutan-wine/", "anchorText": "Decanter's coverage of emerging Asian wine regions", "trustTier": "authority", "sourceName": "Decanter", "sectionId": "section-3" },
+    { "url": "https://www.jancisrobinson.com/", "anchorText": "Jancis Robinson MW assessment", "trustTier": "authority", "sourceName": "Jancis Robinson", "sectionId": "section-3" }
+  ],
+  "ctaType": "newsletter",
+  "captureComponents": ["newsletter", "allocation"],
+  "schema": {
+    "blogPosting": true,
+    "faqPage": true,
+    "product": false
+  },
+  "dataNosnippetSections": []
+}

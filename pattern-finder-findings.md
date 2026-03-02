@@ -1,88 +1,62 @@
-# Pattern Finder Findings -- Guide 3 Reference
+# Pattern Finder Findings - Guide 4 Reference
 
-Generated: 2026-03-01
-Scope: All Guide 1 and Guide 2 patterns for consistent reuse in Guide 3 (Onyx RAG Integration).
+Generated: 2026-03-02
+Guides analyzed: 1, 2, 3 (all route.ts files, all lib modules, all types, all test scripts)
 
 ---
 
 ## 1. API Route Handler Pattern
 
-### Files Analyzed
-- src/app/api/health/route.ts
-- src/app/api/auth/[...nextauth]/route.ts
-- src/app/api/users/route.ts and users/[id]/route.ts
-- src/app/api/content-map/route.ts and content-map/[id]/route.ts
-- src/app/api/content-map/import/route.ts
+### Files Read
+health, auth/[...nextauth], users, users/[id], content-map, content-map/[id], content-map/import, onyx/health, onyx/search
 
-### Entry Point to Data Flow
+### Flow
+HTTP request -> requireRole(...) -> request.json() -> Schema.safeParse(body) -> business logic -> NextResponse.json()
 
-```
-HTTP request arrives
-  -> middleware (withAuth) blocks unauthenticated requests at the edge
-  -> route handler: try { ... } catch (error) { ... }
-  -> await requireRole(...) -- FIRST statement in try
-  -> await request.json() -- read raw body
-  -> SomeSchema.safeParse(body) -- Zod, never .parse()
-  -> if (!parsed.success) return 400 VALIDATION_ERROR
-  -> business logic (Prisma queries, lib function calls)
-  -> return NextResponse.json({ success: true, data: ... })
-  -> catch: classify error string -> 401 / 403 / 500
-```
+### Key Rules (consistent across ALL 8 business routes)
 
-### Canonical Import Block
+1. Auth is ALWAYS first: await requireRole(...) is the first statement inside try.
+2. Auth uses inline catch (no middleware): requireRole throws Error with message AUTH_REQUIRED or AUTH_FORBIDDEN -- caught by string comparison.
+3. Always .safeParse(), never .parse(). Failures return 400 with details: parsed.error.flatten().
+4. Response envelope: always { success: true, data } or { success: false, error: { code, message, details? } }.
+5. Error codes: string literals from ErrorCode union in src/types/api.ts.
+6. HTTP status: POST create = 201, GET/PATCH/DELETE = 200. Render/validate = 200 (no DB write).
+7. Dynamic params: { params }: { params: Promise<{ id: string }> } -- Next.js 15, must be awaited.
+8. Prisma: singleton from @/lib/db. Never new PrismaClient() in routes or lib files.
+9. Zod schemas: co-located at top of route file, PascalCase ending in Schema.
+10. Service errors: separate if (message === ...) blocks before INTERNAL_ERROR (see onyx/search/route.ts).
 
-```ts
+**Consistency Rating: HIGH** -- all 8 business routes follow this template exactly.
+
+---
+
+## 1b. Canonical Route Template
+
+```typescript
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth/session";
 import { z } from "zod";
-```
+// import lib functions and types as needed
 
-Rules:
-- NextRequest: only when handler reads request.json(). Unused request is prefixed _request.
-- NextResponse: ALWAYS imported in every route file.
-- prisma: always from @/lib/db -- never new PrismaClient() inside a route.
-- requireRole: always from @/lib/auth/session.
-- Zod schemas: INLINE at top of route file, NOT in a separate schema file.
+const InputSchema = z.object({
+  field: z.string().min(1),
+});
 
-### Zod Validation -- always .safeParse(), never .parse()
-
-```ts
-const parsed = SomeSchema.safeParse(body);
-if (!parsed.success) {
-  return NextResponse.json(
-    {
-      success: false,
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "Invalid input",
-        details: parsed.error.flatten(),
-      },
-    },
-    { status: 400 }
-  );
-}
-```
-
-The details field ALWAYS carries parsed.error.flatten() on validation failures.
-
-### Success Response Format
-
-```ts
-return NextResponse.json({ success: true, data: entries });                 // GET list
-return NextResponse.json({ success: true, data: entry });                   // GET one, PATCH, DELETE
-return NextResponse.json({ success: true, data: entry }, { status: 201 });  // POST create
-```
-
-Data is ALWAYS under the data key. Status 201 only for POST creates.
-
-### Try/Catch Structure -- canonical, copy this exactly
-
-```ts
-export async function GET() {
+export async function POST(request: NextRequest) {
   try {
-    await requireRole("admin", "editor", "viewer");
-    // ... business logic
+    await requireRole("admin", "editor");  // ALWAYS FIRST
+
+    const body = await request.json();
+    const parsed = InputSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid input", details: parsed.error.flatten() } },
+        { status: 400 }
+      );
+    }
+
+    // business logic using parsed.data
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -98,6 +72,8 @@ export async function GET() {
         { status: 403 }
       );
     }
+    // Service-specific errors go here before INTERNAL_ERROR:
+    // if (message === "RENDER_ERROR") { return NextResponse.json(..., { status: 500 }); }
     return NextResponse.json(
       { success: false, error: { code: "INTERNAL_ERROR", message } },
       { status: 500 }
@@ -106,352 +82,111 @@ export async function GET() {
 }
 ```
 
-Rules:
-- Entire handler body is inside one try/catch.
-- requireRole() is FIRST in try -- before reading body or running any logic.
-- Catch order: AUTH_REQUIRED (401) -> AUTH_FORBIDDEN (403) -> INTERNAL_ERROR (500).
-- Error extraction: const message = error instanceof Error ? error.message : "Unknown error"
-  This EXACT line appears verbatim in every catch block across all 7 route files.
-- No re-throwing. The catch block always returns a NextResponse.
+---
 
-### Dynamic Route Params (Next.js 15)
+## 2. Lib Module Structure Pattern
 
-```ts
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }  // Promise required in Next.js 15
-) {
-  try {
-    await requireRole("admin", "editor", "viewer");
-    const { id } = await params;  // always await params before destructuring
-  }
-}
+### Directory Structure
+```
+src/lib/<domain>/
+  index.ts         -- barrel file: re-exports everything public
+  client.ts        -- main implementation
+  <concern>.ts     -- additional concern files
 ```
 
-### Prisma Select Pattern
+### Barrel Export Pattern (from src/lib/onyx/index.ts)
+```typescript
+export { searchOnyx, searchOnyxSafe, searchOnyxMulti, getOnyxConfig } from './client';
+export type { OnyxSearchFilters } from './client';
+export { buildSearchQueries } from './query-builder';
+export type { ArticleBrief } from './query-builder';
+export { assembleOnyxContext } from './context-assembler';
+export { checkOnyxHealth } from './health-checker';
+```
+Named exports only. No default exports. Types re-exported with `export type { ... }`.
 
-```ts
-// Define at module scope -- reused by all handlers in the file:
-const myModelSelect = {
-  id: true, fieldA: true, createdAt: true, updatedAt: true,
-};
-
-const entries = await prisma.myModel.findMany({
-  select: myModelSelect,
-  orderBy: { createdAt: "desc" },
-}); 
+### Type Import Pattern
+```typescript
+import type { OnyxContext, OnyxSearchResult } from "@/types/onyx";
+// Use "import type" for type-only imports; "import { ... }" for values
 ```
 
-No findMany() or findUnique() without explicit select. Consistent across all 7 route files.
-Route handlers call prisma.* DIRECTLY without retryDatabaseOperation.
-retryDatabaseOperation is ONLY used in src/lib/auth/config.ts (the login flow).
+### Environment Access (src/lib/env.ts)
+```typescript
+import { env } from "@/lib/env";
+// env.ONYX_API_KEY, env.ANTHROPIC_API_KEY, env.CLOUDINARY_CLOUD_NAME, env.BWC_SITE_URL, etc.
+```
+All env access goes through `src/lib/env.ts`. Exception: claude/client.ts and cloudinary/client.ts are stubs (see Inconsistencies).
+
+**Consistency Rating: HIGH** for onyx + content-map. LOW for claude/cloudinary (placeholder stubs).
 
 ---
 
-## 2. Lib Module Pattern
+## 3. Zod Validation Pattern
 
-### Directory Layout
+### Where Zod Lives
+- Co-located with routes: schemas at top of the route.ts file.
+- No shared schema directory. Schemas are NOT in src/types/.
+- Guide 4 exception: src/lib/article-schema/ is the first lib-owned schema module.
 
-```
-src/lib/
-  auth/config.ts       -- NextAuth authOptions config object
-  auth/session.ts      -- requireAuth, requireRole, getCurrentUser, SessionUser type
-  auth/password.ts     -- hashPassword, verifyPassword, validatePassword
-  db/index.ts          -- Prisma singleton (globalForPrisma pattern)
-  db/retry.ts          -- retryDatabaseOperation<T> with exponential backoff
-  env.ts               -- central env accessor (optionalEnv pattern)
-  onyx/client.ts       -- config stub -> Guide 3 replaces with real async client
-  claude/client.ts     -- config stub
-  cloudinary/client.ts -- config stub
-  content-map/index.ts  -- barrel re-export (multi-file module example)
-  content-map/import.ts -- parseCSV, mapCSVRow, importToDatabase, seedCorePages
-  content-map/slug.ts   -- generateSlug, ensureUniqueSlug
-```
+### Schema Naming
+```typescript
+// CREATE: PascalCase verb+noun+Schema
+const CreateUserSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(["admin", "editor", "viewer"]).default("editor"),
+});
 
-### Service Config Stub Pattern (verbatim -- all three stubs share the same shape)
-
-```ts
-// src/lib/onyx/client.ts (current stub)
-export const onyxConfig = {
-  apiUrl: process.env.ONYX_API_URL || "",
-  apiKey: process.env.ONYX_API_KEY || "",
-};
-
-// src/lib/claude/client.ts
-export const claudeConfig = {
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
-  model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929",
-};
-
-// src/lib/cloudinary/client.ts
-export const cloudinaryConfig = {
-  url: process.env.CLOUDINARY_URL || "",
-  cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
-  uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET || "blog",
-};
+// UPDATE: all fields .optional()
+const UpdateContentMapSchema = z.object({
+  title: z.string().min(1).optional(),
+  publishedDate: z.string().datetime().nullable().optional(),  // nullable DB fields
+});
 ```
 
-Guide 3 REPLACES src/lib/onyx/client.ts with a real module exporting async functions.
-The config object shape can be kept as an internal const or folded into the new module.
-
-### Prisma Singleton (verbatim)
-
-```ts
-// src/lib/db/index.ts
-import { PrismaClient } from "@prisma/client";
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === "development" ? ["query","error","warn"] : ["error"],
-}); 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
-```
-
-Import in routes: import { prisma } from "@/lib/db"
-
-### Retry Wrapper (verbatim -- model Guide 3 HTTP retry on this pattern)
-
-```ts
-// src/lib/db/retry.ts
-export async function retryDatabaseOperation<T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  baseDelay: number = 500
-): Promise<T> {
-  let lastError: Error | undefined;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try { return await operation(); }
-    catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      const isRetryable = lastError.message.includes("Connection refused") ||
-        lastError.message.includes("Connection terminated") ||
-        lastError.message.includes("ECONNRESET") ||
-        lastError.message.includes("socket hang up") ||
-        lastError.message.includes("Can't reach database server");
-      if (!isRetryable || attempt === maxRetries) throw lastError;
-      const delay = baseDelay * Math.pow(2, attempt);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-  throw lastError;
+### Usage -- always safeParse, never parse
+```typescript
+const parsed = InputSchema.safeParse(body);
+if (!parsed.success) {
+  return NextResponse.json(
+    { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid input", details: parsed.error.flatten() } },
+    { status: 400 }
+  );
 }
+const data = parsed.data;  // fully typed after this point
 ```
 
-Create a similar HTTP fetch retry wrapper for Onyx calls in src/lib/onyx/client.ts.
-Detect: ECONNRESET, ETIMEDOUT, ECONNREFUSED, and network fetch failures.
-
-### Barrel Index Pattern
-
-```ts
-// src/lib/content-map/index.ts
-export { generateSlug, ensureUniqueSlug } from "./slug";
-export { parseCSV, mapCSVRow, importToDatabase, seedCorePages, CORE_PAGES } from "./import";
-export type { ContentMapRow } from "./import";
-```
-
-Create src/lib/onyx/index.ts with the same barrel pattern once module has 2+ files.
+**Consistency Rating: HIGH** -- .safeParse() + error.flatten() in every validating route.
 
 ---
 
-## 3. Types Pattern
+## 4. Error Handling Pattern
 
-### Files Analyzed
-- src/types/index.ts
-- src/types/api.ts
-- src/types/onyx.ts
-- src/types/auth.ts, content-map.ts, article.ts, renderer.ts, qa.ts, claude.ts, photo.ts
-
-### Index Re-Export Pattern (verbatim)
-
-```ts
-// src/types/index.ts -- wildcard re-export from every type file
-export * from "./auth";
-export * from "./content-map";
-export * from "./article";
-export * from "./renderer";
-export * from "./qa";
-export * from "./onyx";
-export * from "./claude";
-export * from "./photo";
-export * from "./api";
-```
-
-Rule: every new type file must be added here with export *.
-Do NOT add a named re-export here -- use wildcard only.
-
-### ApiResponse and ErrorCode (verbatim from src/types/api.ts)
-
-```ts
-// Standard API response wrappers
-export interface ApiSuccess<T> {
-  success: true;
-  data: T;
-}
-
-export interface ApiError {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-
-export type ApiResponse<T> = ApiSuccess<T> | ApiError;
-
-// Error codes (from orchestration doc S10)
+### Error Codes (from src/types/api.ts:19)
+```typescript
 export type ErrorCode =
-  | "AUTH_REQUIRED"
-  | "AUTH_FORBIDDEN"
-  | "VALIDATION_ERROR"
-  | "NOT_FOUND"
-  | "GENERATION_FAILED"
-  | "ONYX_UNAVAILABLE"   // already registered -- Guide 3 uses this code
-  | "RENDER_ERROR"
-  | "QA_GATE_FAILED"
-  | "CLOUDINARY_ERROR"
-  | "LINK_VERIFICATION_FAILED"
-  | "INTERNAL_ERROR";
+  | "AUTH_REQUIRED"             // 401
+  | "AUTH_FORBIDDEN"            // 403
+  | "VALIDATION_ERROR"          // 400
+  | "NOT_FOUND"                 // 404
+  | "GENERATION_FAILED"         // 500
+  | "ONYX_UNAVAILABLE"          // 503
+  | "RENDER_ERROR"              // 500 -- use in render route
+  | "QA_GATE_FAILED"            // 422
+  | "CLOUDINARY_ERROR"          // 500
+  | "LINK_VERIFICATION_FAILED"  // 500
+  | "INTERNAL_ERROR";           // 500
 ```
 
-### Pre-Defined Onyx Types (verbatim from src/types/onyx.ts)
-
-```ts
-export interface OnyxSearchResult {
-  documentId: string;
-  content: string;
-  sourceDocument: string; // Filename or document title
-  score: number;
-  metadata: Record<string, unknown>;
-}
-
-export interface OnyxContext {
-  query: string;
-  results: OnyxSearchResult[];
-  totalResults: number;
-  searchTimeMs: number;
-}
-
-export interface OnyxHealthStatus {
-  healthy: boolean;
-  indexedDocuments: number | null;
-  lastIndexTime: string | null;
-  responseTimeMs: number;
-}
+### Lib Module Error Convention
+```typescript
+throw new Error("RENDER_ERROR");   // plain Error, code as message string
+// No custom error classes exist. Never: throw new RenderError("...")
 ```
 
-Rule: src/types/onyx.ts ALREADY EXISTS and defines the contracts Guide 3 must satisfy.
-Do NOT redefine OnyxSearchResult, OnyxContext, or OnyxHealthStatus -- import from @/types.
-
----
-
-## 4. Test Script Pattern
-
-### Files Analyzed
-- scripts/test-guide-1.ts
-- scripts/test-guide-2.ts
-
-### Canonical Structure
-
-```ts
-/**
- * Integration test for Guide N: <Name>
- *
- * Run with: npx tsx scripts/test-guide-N.ts
- */
-
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();  // direct instantiation -- NOT the singleton from @/lib/db
-
-async function test() {
-  let passed = 0;
-  let failed = 0;
-
-  function check(name: string, result: boolean, detail?: string) {
-    if (result) {
-      console.log('  PASS ' + name);
-      passed++;
-    } else {
-      console.log('  FAIL ' + name + (detail ? ' -- ' + detail : '"'));
-      failed++;
-    }
-  }
-  console.log(NL + "=== Guide N Integration Tests ===" + NL);
-
-  // --- Test 1: <Category> ------------------------------------------
-  console.log("1. <test group label>");
-  try {
-    // ... DB or logic assertions ...
-    check('<description>', <boolean expression>, '<detail>');
-  } catch (e) {
-    check('<description>', false, (e as Error).message);
-  }
-
-  // --- Test N: API endpoints (SKIP if server not running) -----------
-  console.log("N. API endpoints");
-  const appUrl = process.env.APP_URL || "http://localhost:3000";
-  try {
-    const res = await fetch(appUrl + "/api/some-route");
-    check("GET /api/some-route responds", res.status === 200 || res.status === 401);
-  } catch {
-    console.log("  SKIP API tests -- dev server not running");
-  }
-
-  // --- Summary -------------------------------------------------------
-  console.log(NL + "=== Results: " + passed + " passed, " + failed + " failed ===" + NL);
-  await prisma."$disconnect"();
-  process.exit(failed > 0 ? 1 : 0);
-}
-
-test();
-```
-
-### Test Script Rules
-
-1. Run via: npx tsx scripts/test-guide-N.ts
-2. Direct PrismaClient instantiation -- never import the singleton from @/lib/db.
-3. check() signature has THREE params since Guide 2: (name, result, detail?).
-   Guide 1 used TWO params (no detail). Guide 3 must use the 3-param form.
-4. API tests wrapped in try/catch with SKIP output (not FAIL) if server not running.
-5. Accept 401 as valid for authenticated endpoints: res.status === 200 || res.status === 401.
-6. Always call prisma."$disconnect"() at the end.
-7. process.exit(failed > 0 ? 1 : 0) -- non-zero on any failure.
-8. Group tests with numbered console.log headings.
-
-### Guide 3 Test Script Must Cover
-
-1. Onyx health endpoint reachable (GET /api/onyx/health returns 200)
-2. Onyx search endpoint accepts a query (POST /api/onyx/search)
-3. OnyxContext shape has correct fields (query, results[], totalResults, searchTimeMs)
-4. Error handling: ONYX_UNAVAILABLE returned when Onyx is down
-
----
-
-## 5. Error Handling Pattern
-
-### Auth Error Flow
-
-requireRole() throws plain Error objects with magic string messages.
-These are NOT custom error classes -- just new Error("AUTH_REQUIRED").
-
-```ts
-// src/lib/auth/session.ts
-export async function requireAuth(): Promise<SessionUser> {
-  const user = await getCurrentUser();
-  if (!user) throw new Error("AUTH_REQUIRED");
-  return user;
-}
-
-export async function requireRole(...roles: UserRole[]): Promise<SessionUser> {
-  const user = await requireAuth();
-  if (!roles.includes(user.role)) throw new Error("AUTH_FORBIDDEN");
-  return user;
-}
-```
-
-### Error Catch Block (verbatim -- identical in all 7 route files)
-
-```ts
+### Standard Catch Block
+All 8 routes use this exact structure. Service-specific errors are inserted between AUTH_FORBIDDEN and INTERNAL_ERROR:
+```typescript
 } catch (error) {
   const message = error instanceof Error ? error.message : "Unknown error";
   if (message === "AUTH_REQUIRED") {
@@ -466,6 +201,13 @@ export async function requireRole(...roles: UserRole[]): Promise<SessionUser> {
       { status: 403 }
     );
   }
+  // service-specific (add for render/validate routes):
+  if (message === "RENDER_ERROR") {
+    return NextResponse.json(
+      { success: false, error: { code: "RENDER_ERROR", message: "Article rendering failed" } },
+      { status: 500 }
+    );
+  }
   return NextResponse.json(
     { success: false, error: { code: "INTERNAL_ERROR", message } },
     { status: 500 }
@@ -473,351 +215,518 @@ export async function requireRole(...roles: UserRole[]): Promise<SessionUser> {
 }
 ```
 
-### Guide 3 Error Codes
-
-ONYX_UNAVAILABLE is pre-registered in src/types/api.ts ErrorCode union.
-Use it when the Onyx service is unreachable or returns a non-2xx status.
-
-```ts
-// For Onyx-specific failures in /api/onyx/* routes:
-return NextResponse.json(
-  { success: false, error: { code: "ONYX_UNAVAILABLE", message } },
-  { status: 503 }
-);
-```
-
-Status mapping:
-- 400: VALIDATION_ERROR
-- 401: AUTH_REQUIRED
-- 403: AUTH_FORBIDDEN
-- 404: NOT_FOUND
-- 503: ONYX_UNAVAILABLE (service dependency down)
-- 500: INTERNAL_ERROR (all other errors)
-
-### No Custom Error Classes
-
-No custom error class hierarchy exists. All errors are plain Error objects.
-Do NOT introduce custom error classes in Guide 3 -- throw new Error(string) only.
+**Consistency Rating: HIGH** -- identical catch block in all 8 routes.
 
 ---
 
-## 6. Environment Variables Pattern
+## 5. Type Definition Pattern
 
-### Onyx Variables (.env.example)
+### Convention
+- `interface` for object shapes: User, ContentMapEntry, CanonicalArticleDocument, ArticleSection, RendererInput
+- `type` for unions and aliases: ArticleType, ErrorCode, ContentNode, ContentNodeType, CaptureType
+- **No `enum` keyword** anywhere -- string literal unions only
+- Discriminated unions: `interface extends base` for each member, `type` for the union
 
+### Discriminated Union Pattern (src/types/article.ts)
+```typescript
+// Base interface
+export interface ContentNodeBase { type: ContentNodeType; id: string; }
+
+// Each member extends base with narrow literal type
+export interface ParagraphNode extends ContentNodeBase { type: "paragraph"; text: string; }
+export interface ImageNode extends ContentNodeBase { type: "image"; placement: ImagePlacement; }
+
+// Union collects all members
+export type ContentNode = ParagraphNode | ImageNode | PullQuoteNode | KeyFactsNode | TableNode | ListNode | CalloutNode;
 ```
-ONYX_BASE_URL=https://rmoss-onyx.xyz
-ONYX_API_URL=https://rmoss-onyx.xyz/api
-ONYX_API_KEY=your-onyx-api-key
-ONYX_INDEX_NAME=default
-ONYX_SEARCH_TIMEOUT_MS=10000
+
+### Types Already Defined in src/types/ -- Guide 4 Uses These, Does NOT Redefine
+- CanonicalArticleDocument + sub-types (ArticleSection, all ContentNode variants) -- src/types/article.ts
+- RendererInput, RendererOutput, HtmlOverride -- src/types/renderer.ts
+- ErrorCode, ApiSuccess, ApiError, ApiResponse -- src/types/api.ts
+- PhotoManifest, Photo, CloudinaryTransform -- src/types/photo.ts
+
+### Zod/TypeScript Sync -- NEW in Guide 4
+```typescript
+// In src/lib/article-schema/schema.ts:
+export const CanonicalArticleDocumentSchema = z.object({ ... });
+export type ValidatedDoc = z.infer<typeof CanonicalArticleDocumentSchema>;
 ```
 
-### Current Onyx Stub (src/lib/onyx/client.ts)
+**Consistency Rating: HIGH** for type/interface convention. Zod-type sync is NEW in Guide 4.
 
-```ts
-export const onyxConfig = {
-  apiUrl: process.env.ONYX_API_URL || "",
-  apiKey: process.env.ONYX_API_KEY || "",
-};
+---
+
+## 6. Test Script Pattern
+
+### Run Command
+```bash
+npx tsx scripts/test-guide-N.ts
 ```
 
-The stub only reads ONYX_API_URL and ONYX_API_KEY.
-Guide 3 must add ONYX_BASE_URL, ONYX_INDEX_NAME, ONYX_SEARCH_TIMEOUT_MS to the module.
+### Evolution Across Guides
+- **Guide 1 & 2**: `check` function defined inside `test()`. Module-level `let passed/failed` in Guide 2.
+- **Guide 3**: `check` at module level, `dotenv.config` called FIRST before any lib imports, dynamic `await import(...)` for lib modules.
+- **Guide 4 MUST follow Guide 3 pattern**.
 
-### How to Read Env Vars
+### Guide 3 Pattern (canonical reference)
+```typescript
+/**
+ * Integration test for Guide 4: Canonical Article Schema + Article Renderer
+ * Run with: npx tsx scripts/test-guide-4.ts
+ */
+import dotenv from "dotenv";
+import path from "path";
+dotenv.config({ path: path.resolve(__dirname, "../.env") });  // FIRST
 
-Two styles exist in the codebase:
-- Direct: process.env.VARIABLE_NAME (used in service config stubs)
-- Central: import { env } from "@/lib/env"; env.VARIABLE_NAME
+let passed = 0;
+let failed = 0;
 
-env.ts ALREADY includes ONYX_API_URL and ONYX_API_KEY.
-env.ts is MISSING: ONYX_BASE_URL, ONYX_INDEX_NAME, ONYX_SEARCH_TIMEOUT_MS.
-Guide 3 should add these missing vars to env.ts.
-
-### env.ts Current State (verbatim)
-
-```ts
-// src/lib/env.ts
-function optionalEnv(name: string, defaultValue: string = ""): string {
-  return process.env[name] || defaultValue;
+function check(name: string, result: boolean, detail?: string) {  // module-level
+  if (result) { console.log(`  PASS ${name}`); passed++; }
+  else { console.log(`  FAIL ${name}${detail ? ` -- ${detail}` : ""}`); failed++; }
 }
 
-export const env = {
-  DATABASE_URL: optionalEnv('DATABASE_URL'),
-  ANTHROPIC_API_KEY: optionalEnv('ANTHROPIC_API_KEY'),
-  ANTHROPIC_MODEL: optionalEnv('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929'),
-  ONYX_API_URL: optionalEnv('ONYX_API_URL'),
-  ONYX_API_KEY: optionalEnv('ONYX_API_KEY'),
-  // TO ADD: ONYX_BASE_URL, ONYX_INDEX_NAME, ONYX_SEARCH_TIMEOUT_MS
-  BWC_SITE_URL: optionalEnv('BWC_SITE_URL', 'https://www.bhutanwine.com'),
-};
+async function test() {
+  // Dynamic imports after env is loaded
+  const { validateCanonicalDocument, repairCanonicalDocument } = await import("../src/lib/article-schema");
+  const { renderArticle } = await import("../src/lib/renderer");
+
+  console.log("\n=== Guide 4 Integration Tests ===\n");
+
+  // Test sections...
+
+  // API endpoints
+  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  try {
+    const renderRes = await fetch(`${appUrl}/api/articles/render`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: minimalDoc, htmlOverrides: null, templateVersion: "1.0" }),
+    });
+    check("POST /api/articles/render responds", renderRes.status === 200 || renderRes.status === 401);
+
+    const validateRes = await fetch(`${appUrl}/api/articles/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: minimalDoc }),
+    });
+    check("POST /api/articles/validate responds", validateRes.status === 200 || validateRes.status === 401);
+  } catch {
+    console.log("  SKIP API tests -- dev server not running");
+    console.log(`       (Start with npm run dev, then re-run this test)`);
+  }
+
+  console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+test();
 ```
+
+### Key Observations
+- API tests accept 200 or 401 (no auth sessions in test scripts).
+- DB tests use `new PrismaClient()` directly, not via retry wrapper.
+- Handle dev server not running gracefully (try/catch + SKIP message).
+- dotenv.config must be called before ANY lib import.
+
+**Consistency Rating: MEDIUM** -- follow Guide 3 for Guide 4.
 
 ---
 
-## 7. Middleware and Auth Pattern
+## 7. Import Conventions
 
-### Middleware (verbatim from src/middleware.ts)
+### Path Aliases (tsconfig.json)
+```json
+"paths": { "@/*": ["./src/*"] }
+```
+Single alias: `@/` maps to `src/`. No other aliases.
 
-```ts
-import { withAuth } from "next-auth/middleware";
-
-export default withAuth({
-  pages: { signIn: "/login" },
-});
-
-export const config = {
-  matcher: [
-    '/((?!login|api/auth|api/health|api/capture|_next|favicon.ico).*)',
-  ],
-};
+### Import Ordering (observed in all routes)
+```typescript
+// 1. Framework
+import { NextRequest, NextResponse } from "next/server";
+// 2. Internal lib
+import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
+import { renderArticle } from "@/lib/renderer";
+// 3. Types
+import type { SomeType } from "@/types/domain";
+// 4. Third-party
+import { z } from "zod";
 ```
 
-Routes excluded from auth middleware:
-- /login
-- /api/auth/* (NextAuth internal)
-- /api/health (public health check)
-- /api/capture (public lead capture from Wix)
-- /_next, /favicon.ico (static assets)
+### Export Conventions
+- All lib modules: named exports only, no default exports
+- Types: `export type { ... }` in barrel re-exports (explicit named re-exports preferred)
+- `src/types/index.ts`: `export * from "./domain"` (wildcard)
 
-Guide 3 NEW ROUTES: /api/onyx/health and /api/onyx/search are AUTHENTICATED.
-Do NOT add them to the middleware exclusion list.
-
-### UserRole Type and Valid Roles
-
-```ts
-// src/lib/auth/session.ts
-export type UserRole = "admin" | "editor" | "viewer";
+### Prisma Rule
+```typescript
+import { prisma } from "@/lib/db";   // Always the singleton
+// NEVER in routes/lib: new PrismaClient() -- only valid in test scripts
 ```
 
-Three roles exist: admin, editor, viewer.
-Onyx search: allow all roles -> requireRole("admin", "editor", "viewer")
-Onyx health: allow all roles -> requireRole("admin", "editor", "viewer")
-
-### requireRole Usage Survey (all 7 existing routes)
-
-- GET /api/health: NO auth (public)
-- GET /api/users: requireRole("admin")
-- POST /api/users: requireRole("admin")
-- GET /api/users/[id]: requireRole("admin")
-- PATCH /api/users/[id]: requireRole("admin")
-- DELETE /api/users/[id]: requireRole("admin")
-- GET /api/content-map: requireRole("admin", "editor", "viewer")
-- POST /api/content-map: requireRole("admin", "editor")
-- GET /api/content-map/[id]: requireRole("admin", "editor", "viewer")
-- PATCH /api/content-map/[id]: requireRole("admin", "editor")  [note: leading empty-string arg bug]
-- DELETE /api/content-map/[id]: requireRole("admin")
-- POST /api/content-map/import: requireRole("admin")
+**Consistency Rating: HIGH.**
 
 ---
 
-## 8. Consistency Ratings
+## 8. External Service Call Pattern
 
-| Pattern | Rating | Notes |
-|---------|--------|-------|
-| API route import block | CONSISTENT | Identical across all 7 route files |
-| Zod safeParse + VALIDATION_ERROR | CONSISTENT | Every route with a body uses this |
-| Success response shape | CONSISTENT | No deviations found |
-| Error catch block structure | CONSISTENT | Verbatim copy in all 7 files |
-| requireRole as first try statement | CONSISTENT | Without exception |
-| Prisma select (no bare findMany) | CONSISTENT | All queries use explicit select |
-| Dynamic params as Promise (Next.js 15) | CONSISTENT | Both [id] routes await params |
-| Barrel index for multi-file lib modules | CONSISTENT | content-map module follows it |
-| check() 3-param signature in test scripts | DRIFT | Guide 1: 2 params, Guide 2: 3 params |
-| env.ts as central accessor | DRIFT | Stubs use process.env directly |
-| retryDatabaseOperation in routes | DRIFT | Only auth/config.ts uses it |
+### Onyx Client (src/lib/onyx/client.ts -- reference for all future service clients)
+```typescript
+// Config: exported function (not class property), reads from env.*
+export function getOnyxConfig() {
+  return { baseUrl: env.ONYX_BASE_URL, apiKey: env.ONYX_API_KEY, timeoutMs: ... };
+}
+
+// Internal retry (NOT exported from index.ts):
+// - AbortController per request for per-request timeout
+// - MAX_RETRIES=3, BASE_DELAY_MS=500, exponential backoff (500ms, 1000ms, 2000ms)
+// - Retryable: ECONNRESET/ECONNREFUSED/ETIMEDOUT, status 502/503/504
+// - Non-retryable: status 400/401/403/404
+async function fetchWithRetry(url: string, options: RequestInit, timeoutMs: number): Promise<Response> { ... }
+
+// Three public variants -- follow this pattern for any external service client:
+export async function searchOnyx(q, filters?): Promise<OnyxContext>       // throws Error("ONYX_UNAVAILABLE")
+export async function searchOnyxSafe(q): Promise<OnyxContext | null>       // returns null on failure
+export async function searchOnyxMulti(qs): Promise<OnyxContext[]>          // Promise.allSettled
+```
+
+### Neon/Prisma Cold Start (src/lib/db/retry.ts)
+`retryDatabaseOperation<T>(op, maxRetries=3, baseDelay=500)` -- used only in auth/config.ts during login.
+Guide 4 renderer is a pure function with no DB calls.
+
+**Consistency Rating: HIGH** for Onyx pattern.
 
 ---
 
 ## 9. Inconsistencies Found
 
-### 1. check() Signature Drift
+### INCONSISTENCY 1: claude/client.ts and cloudinary/client.ts bypass env.ts
+- `src/lib/claude/client.ts`: uses `process.env.ANTHROPIC_API_KEY` directly
+- `src/lib/cloudinary/client.ts`: uses `process.env.CLOUDINARY_URL` directly
+- All other lib modules: `import { env } from "@/lib/env"`
+- **Verdict**: Placeholder stubs not yet implemented. Guide 4 MUST use `env.*` in renderer/cloudinary.ts.
 
-test-guide-1.ts: check(name: string, result: boolean)
-test-guide-2.ts: check(name: string, result: boolean, detail?: string)
-Guide 3 MUST use the 3-param form.
+### INCONSISTENCY 2: contentMapSelect duplicated across two route files
+- Identical `contentMapSelect` object in both `content-map/route.ts` and `content-map/[id]/route.ts`
+- **Verdict**: Do not repeat. Guide 4 routes have no shared constants needed.
 
-### 2. env.ts Underused
+### INCONSISTENCY 3: Test script check function scope
+- Guide 1 & 2: `check` inside `test()` function
+- Guide 3: `check` at module level (more mature)
+- **Verdict**: Follow Guide 3 (module-level check + counters).
 
-src/lib/env.ts defines optionalEnv but service stubs read process.env directly.
-Guide 3 should add missing Onyx vars to env.ts and import from there.
-
-### 3. CLOUDINARY_UPLOAD_PRESET Missing from .env.example
-
-src/lib/cloudinary/client.ts references this var but it is absent from .env.example.
-Pre-existing bug. Do not fix in Guide 3.
-
-### 4. retryDatabaseOperation Not Used in Routes
-
-The retry wrapper is only used in auth/config.ts, not in any route handler.
-Build a SEPARATE retryFetch wrapper for Onyx HTTP calls in src/lib/onyx/client.ts.
-Model it on retryDatabaseOperation but target network error strings.
-
-### 5. Extra Comma Bug in PATCH /api/content-map/[id]
-
-requireRole call has a leading empty string: requireRole("", "admin", "editor")
-Likely a typo. Does not break runtime. Do not replicate.
+### INCONSISTENCY 4: content-map/import/route.ts skips Zod
+- Uses manual `typeof body.csv !== "string"` instead of Zod `.safeParse()`
+- All other POST routes use Zod
+- **Verdict**: Outlier. Guide 4 must use Zod for all input validation.
 
 ---
 
-## 10. Anti-Patterns to Avoid in Guide 3
+## 10. Anti-Patterns Found
 
-1. new PrismaClient() inside a route handler
-   Always use: import { prisma } from "@/lib/db"
+### ANTI-PATTERN 1: Duplicated catch blocks (accepted by convention)
+Every route copies the same catch block inline. A shared `handleRouteError(error)` helper would be DRY-er, but since all 8 routes duplicate it, **Guide 4 MUST follow the same duplication pattern** for consistency.
 
-2. Zod .parse() instead of .safeParse()
-   Bad: MySchema.parse(body) -- throws uncaught ZodError
-   Good: MySchema.safeParse(body) then check parsed.success
-
-3. requireRole() called after reading the request body
-   Auth check MUST be the first statement in every try block
-
-4. Re-throwing errors from catch blocks
-   Catch always returns a NextResponse, never throws
-
-5. Returning data without the success/data envelope
-   Always: { success: true, data: ... }
-
-6. status 200 for POST creates
-   POST creates must return status 201
-
-7. Skipping await on params in Next.js 15 dynamic routes
-   const { id } = await params  (not: const { id } = params)
-
-8. Importing types from specific type files instead of @/types
-   Use: import { OnyxContext } from "@/types"
-
-9. Introducing custom error classes
-   Use plain: throw new Error("message")
+### ANTI-PATTERN 2: 409 conflict uses VALIDATION_ERROR code
+`content-map/route.ts` returns status 409 with `code: "VALIDATION_ERROR"` for slug conflicts.
+No dedicated CONFLICT error code exists in `ErrorCode`. Use `VALIDATION_ERROR` + 409 for uniqueness conflicts in Guide 4.
 
 ---
 
-## 11. Recommendations for Guide 3
+## 11. Recommendations for Guide 4
 
-### New Files to Create
+### src/lib/article-schema/
+Structure: `index.ts` + `schema.ts` + `validate.ts` + `repair.ts`
 
-| File | Purpose |
-|------|---------|
-| src/lib/onyx/client.ts | Replace stub with real async Onyx client |
-| src/lib/onyx/index.ts | Barrel re-export (barrel pattern) |
-| src/app/api/onyx/health/route.ts | Proxy Onyx health to frontend |
-| src/app/api/onyx/search/route.ts | Accept query, call Onyx, return OnyxContext |
-| scripts/test-guide-3.ts | Integration test for Guide 3 |
+- **schema.ts**: Define `CanonicalArticleDocumentSchema` as Zod object. Export schema + `z.infer<>` type.
+- **validate.ts**: `validateCanonicalDocument(doc: unknown): { valid: boolean, errors: ZodError | null, data?: CanonicalArticleDocument }`
+- **repair.ts**: `repairCanonicalDocument(doc: unknown): { repaired: CanonicalArticleDocument, changes: string[] }`
+- **index.ts**: Re-export only public functions + types. NOT raw Zod schemas.
+- Use `import type { CanonicalArticleDocument } from "@/types/article"` as the base TypeScript type.
 
-### Files to Modify
+### src/lib/renderer/
+Structure: `index.ts` + `renderer.ts` + `components.ts` + `css.ts` + `jsonld.ts` + `cloudinary.ts`
 
-| File | Change |
-|------|--------|
-| src/lib/env.ts | Add ONYX_BASE_URL, ONYX_INDEX_NAME, ONYX_SEARCH_TIMEOUT_MS |
+- **renderer.ts**: `export function renderArticle(input: RendererInput): RendererOutput`
+- Pure function: no side effects, no DB calls, no HTTP calls.
+- `throw new Error("RENDER_ERROR")` on failure (caught by route handler).
+- `import type { RendererInput, RendererOutput } from "@/types/renderer"` (already defined).
+- `import { env } from "@/lib/env"` for `env.CLOUDINARY_CLOUD_NAME`.
 
-### Files to Leave Unchanged
+### src/app/api/articles/render/route.ts
+- `requireRole("admin", "editor")`
+- `RenderRequestSchema`: `{ document: z.unknown(), htmlOverrides: z.array(...).nullable().default(null), templateVersion: z.string().default("1.0") }`
+- Add `RENDER_ERROR` catch block before `INTERNAL_ERROR`
+- Return HTTP 200 (no DB write -- pure transform)
+- Return `{ success: true, data: { html, metaTitle, metaDescription, schemaJson, wordCount } }`
 
-- src/types/onyx.ts (OnyxSearchResult, OnyxContext, OnyxHealthStatus already defined)
-- src/types/api.ts (ONYX_UNAVAILABLE already in ErrorCode union)
-- src/middleware.ts (Onyx routes are authenticated -- no change needed)
-- src/lib/auth/session.ts (requireRole pattern stays as-is)
+### src/app/api/articles/validate/route.ts
+- `requireRole("admin", "editor")`
+- `ValidateRequestSchema`: `{ document: z.unknown() }`
+- Return `{ success: true, data: { valid: boolean, errors: [...] | null, repaired?: CanonicalArticleDocument } }`
 
-### Canonical Onyx Route Template (follows all established patterns)
+### scripts/test-guide-4.ts
+- Follow Guide 3 style exactly (dotenv first, module-level check, dynamic imports)
+- Test sections: (1) Schema -- valid doc passes, invalid fails, repair works; (2) Renderer -- html/wordCount/schemaJson present; (3) API -- 200 or 401 accepted
+- Create minimal CanonicalArticleDocument fixture (all required fields populated)
+- `process.exit(failed > 0 ? 1 : 0)`
 
-```ts
-// src/app/api/onyx/search/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { requireRole } from "@/lib/auth/session";
-import { z } from "zod";
-import { searchOnyx } from "@/lib/onyx";  // barrel index
+---
 
-const SearchSchema = z.object({
-  query: z.string().min(1),
-  maxResults: z.number().int().min(1).max(20).optional().default(5),
-}); 
+## Summary Table
 
-export async function POST(request: NextRequest) {
-  try {
-    await requireRole("admin", "editor", "viewer");  // FIRST
-    const body = await request.json();
-    const parsed = SearchSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid input", details: parsed.error.flatten() } },
-        { status: 400 }
-      );
-    }
-    const context = await searchOnyx(parsed.data.query, parsed.data.maxResults);
-    return NextResponse.json({ success: true, data: context });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    if (message === "AUTH_REQUIRED") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
-        { status: 401 }
-      );
-    }
-    if (message === "AUTH_FORBIDDEN") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-        { status: 403 }
-      );
-    }
-    if (message === "ONYX_UNAVAILABLE") {
-      return NextResponse.json(
-        { success: false, error: { code: "ONYX_UNAVAILABLE", message } },
-        { status: 503 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
-  }
+| Pattern | Consistency | Guide 4 Action |
+|---|---|---|
+| Route handler template | HIGH | Copy exactly |
+| Auth: requireRole inline throws | HIGH | Copy exactly |
+| Zod: .safeParse() + flatten() | HIGH | Copy exactly |
+| Error catch block (AUTH + service + INTERNAL) | HIGH | Copy exactly |
+| Response envelope { success, data/error } | HIGH | Copy exactly |
+| Lib: barrel index.ts | HIGH | Follow for article-schema + renderer |
+| Lib: named exports only, no defaults | HIGH | Follow |
+| Types: interface for objects, type for unions | HIGH | Follow |
+| No enum keyword -- string literal unions | HIGH | Follow |
+| Env access via src/lib/env.ts | MEDIUM (stubs exist) | Always use env.* |
+| Test script: Guide 3 style | MEDIUM | Follow Guide 3 |
+| Prisma: singleton from @/lib/db | HIGH | Follow |
+| import type for type-only imports | HIGH | Follow |
+| No custom Error classes | HIGH | throw new Error("CODE") only |
+| Service errors before INTERNAL_ERROR | HIGH | Add RENDER_ERROR in render route |
+
+
+---
+
+## 12. BEM/CSS Pattern for Rendered HTML Output
+
+### Source Documents
+- `docs/Bhutan Wine Company — Brand Style Guide for HTML Blog Posts (3).md` (authoritative)
+- `CLAUDE.md` §Blog Article Output section (summary reference)
+
+### CSS Variable Naming Convention
+All CSS custom properties use the `--bwc-` prefix. Variables are defined once in `:root {}` and embedded inline via a `<style>` block in the rendered HTML output.
+
+```css
+:root {
+  /* Primary */
+  --bwc-gold: #bc9b5d;
+  --bwc-black: #000000;
+  --bwc-white: #ffffff;
+
+  /* Text */
+  --bwc-text-primary: #000000;
+  --bwc-text-secondary: #414141;
+  --bwc-text-dark-alt: #242323;
+  --bwc-text-footer: #292929;
+  --bwc-text-brown: #624c40;
+
+  /* Backgrounds */
+  --bwc-bg-cream: #fcf8ed;
+  --bwc-bg-peach: #f6ebe4;
+  --bwc-bg-light: #f7f7f7;
+  --bwc-bg-soft-gray: #e8e6e6;
+  --bwc-bg-blue: #c8eef5;
+  --bwc-bg-green: #316142;
+
+  /* Borders */
+  --bwc-border-light: #cccccc;
 }
 ```
 
+### Spacing Scale (also in `:root {}`)
+```css
+:root {
+  --space-xs: 8px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 48px;
+  --space-xl: 80px;
+  --space-2xl: 120px;
+}
+```
+
+### BEM Class Naming Convention
+Prefix: `bwc-` on all component classes. Style guide uses flat BEM (block only), not block__element--modifier for the documented components.
+
+```
+bwc-article        -- <article> wrapper (from HTML skeleton §18)
+bwc-brand          -- brand name / logo text
+bwc-nav            -- navigation items
+bwc-hero-title     -- hero h1
+bwc-hero-subtitle  -- hero intro/deck paragraph
+bwc-section-title  -- h2 with gold accent (55px, Cormorant Garamond 600)
+bwc-section-title-standard -- h2 standard variant (50px, Cormorant Garamond 500)
+bwc-subsection     -- h3 (28px, Cormorant Garamond 600)
+bwc-card-heading   -- h3/h4 in card context (40px, Fraunces 400)
+bwc-featured-text  -- pull quote / featured text (28px, Cormorant Garamond 300)
+bwc-card-body      -- card body text (25px, Fraunces 400)
+bwc-body           -- primary body text (16px, Nunito Sans 300)
+bwc-body-bold      -- bold body text (16px, Nunito Sans 700)
+bwc-footer         -- footer text (12px, Trirong 400)
+bwc-footer-link    -- footer links (20px, Cormorant Garamond 600)
+```
+
+### Blog Post Element Mapping (semantic selectors, not BEM)
+The Brand Style Guide's primary typography system for article content uses semantic selectors, NOT BEM classes on body copy:
+
+```css
+article h1 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--bwc-gold);
+}
+
+article h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--bwc-text-dark-alt);
+}
+
+article h3 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--bwc-text-primary);
+}
+
+article p,
+article li {
+  font-family: 'Nunito Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.7;
+  color: var(--bwc-text-primary);
+}
+
+article blockquote {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--bwc-text-brown);
+  border-left: 3px solid var(--bwc-gold);
+  padding-left: 1.25em;
+  margin: 2em 0;
+  font-style: italic;
+}
+
+article figcaption {
+  font-family: 'Trirong', serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--bwc-text-secondary);
+}
+
+article .lead,
+article .intro {
+  font-family: 'Fraunces', serif;
+  font-size: 21px;
+  font-weight: 400;
+  color: var(--bwc-text-secondary);
+}
+```
+
+### Google Fonts Import (required in every rendered HTML `<head>`)
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Fraunces:ital,wght@0,400;0,700;1,400&family=Nunito+Sans:wght@300;400;700&family=Trirong&display=swap" rel="stylesheet">
+```
+
+### HTML Skeleton Structure (from Brand Style Guide §18)
+The renderer must output this top-level structure:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>[metaTitle]</title>
+  <meta name="description" content="[metaDescription]">
+  <link rel="canonical" href="[canonicalUrl]">
+  <!-- Google Fonts preconnect + stylesheet link -->
+  <style>
+    /* Embedded CSS: :root variables + spacing scale + article element mapping + responsive overrides */
+  </style>
+  <script type="application/ld+json">
+    { "@context": "https://schema.org", ... }
+  </script>
+</head>
+<body>
+  <article class="bwc-article">
+    <header class="blog-hero">
+      <p class="eyebrow">Bhutan Wine Company Journal</p>
+      <h1>[title]</h1>
+      <p class="lead">[executiveSummary]</p>
+      <p class="meta">
+        <time datetime="[ISO date]">[formatted date]</time>
+        <span aria-hidden="true"> - </span>
+        <span>By [author.name], [author.credentials]</span>
+      </p>
+    </header>
+    <section class="blog-content">
+      <!-- sections iterated here -->
+    </section>
+    <footer class="article-footer">
+      <p class="last-updated">Last updated: <time datetime="[ISO date]">[formatted date]</time></p>
+    </footer>
+  </article>
+</body>
+</html>
+```
+
+### Image HTML Rules (from Brand Style Guide §10-11 and CLAUDE.md)
+- Hero image: `loading="eager" fetchpriority="high"` + explicit `width` and `height`
+- All other images: `loading="lazy"` + explicit `width` and `height`
+- Informative images: `alt="[10-25 word description]"`
+- Decorative images: `alt=""`
+- All images wrapped in `<figure>` with optional `<figcaption>`
+- Cloudinary URL construction: `https://res.cloudinary.com/{cloudName}/image/upload/{transform}/{publicId}`
+
+### Mobile Responsive Overrides (required in embedded CSS)
+```css
+@media (max-width: 768px) {
+  article h1 { font-size: 38px; }
+  article h2 { font-size: 30px; }
+  article h3 { font-size: 24px; }
+  article p, article li { font-size: 16px; line-height: 1.7; }
+  article .lead, article .intro { font-size: 19px; }
+}
+```
+
+**Consistency Rating: HIGH** -- CSS variables, font stack, and semantic selectors are fully defined in the Brand Style Guide. No existing renderer code to drift from yet.
+
 ---
 
-## 12. File Reference Map
+## 13. Import Order Pattern (Verified Against Actual Route Files)
 
-All files examined during this analysis:
+Actual import order observed in `src/app/api/onyx/search/route.ts` and `src/app/api/content-map/route.ts`:
 
-### API Routes
-- src/app/api/health/route.ts
-- src/app/api/auth/[...nextauth]/route.ts
-- src/app/api/users/route.ts
-- src/app/api/users/[id]/route.ts
-- src/app/api/content-map/route.ts
-- src/app/api/content-map/[id]/route.ts
-- src/app/api/content-map/import/route.ts
+```typescript
+// 1. Framework (next/server)
+import { NextRequest, NextResponse } from "next/server";
 
-### Lib Modules
-- src/lib/auth/config.ts
-- src/lib/auth/session.ts
-- src/lib/auth/password.ts
-- src/lib/db/index.ts
-- src/lib/db/retry.ts
-- src/lib/env.ts
-- src/lib/onyx/client.ts
-- src/lib/claude/client.ts
-- src/lib/cloudinary/client.ts
-- src/lib/content-map/index.ts
-- src/lib/content-map/import.ts
-- src/lib/content-map/slug.ts
+// 2. Internal lib (@ alias, values)
+import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
+import { searchOnyx } from "@/lib/onyx";
 
-### Types
-- src/types/index.ts
-- src/types/api.ts
-- src/types/onyx.ts
-- src/types/auth.ts
+// 3. Internal types (type-only, when present)
+import type { SomeType } from "@/types/domain";
 
-### Infrastructure
-- src/middleware.ts
-- prisma/schema.prisma
-- .env.example
+// 4. Third-party (zod, etc.)
+import { z } from "zod";
+```
 
-### Test Scripts
-- scripts/test-guide-1.ts
-- scripts/test-guide-2.ts
+Note: In actual route files, `z` from `"zod"` consistently appears LAST after all `@/` internal imports. The existing findings doc had this order correct but is clarified here: third-party (zod) is after all internal `@/` imports.
 
-### Generated Docs
-- docs/_generated/api-routes.md
-- docs/_generated/env-vars.md
-- docs/_generated/prisma-models.md
+**Consistency Rating: HIGH** -- same order in all 3 business routes examined.
+

@@ -28,3 +28,10 @@ export type ErrorCode =
   | "CLOUDINARY_ERROR"
   | "LINK_VERIFICATION_FAILED"
   | "INTERNAL_ERROR";
+
+// Validation result returned by article schema validation
+export interface ValidationResult {
+  valid: boolean;
+  errors: { path: string; message: string }[];
+  warnings: string[];
+}
