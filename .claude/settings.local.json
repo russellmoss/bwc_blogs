@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh:*)",
+      "Bash(curl:*)",
+      "Bash(npx vercel:*)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(node:*)",
+      "Bash(ls:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx tsx:*)",
+      "mcp__claude_ai_Context7__resolve-library-id",
+      "mcp__claude_ai_Context7__query-docs",
+      "Bash(npx tsc:*)",
+      "Bash(mkdir:*)",
+      "Bash(npx next:*)",
+      "Bash(wc:*)",
+      "Bash(npx agent-guard:*)"
+    ]
+  }
+}

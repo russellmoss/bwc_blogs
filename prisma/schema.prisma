@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  role         String   @default("editor") // "admin" | "editor" | "viewer"
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// ============================================================
+// CONTENT MAP & STRATEGY
+// ============================================================
+
+model ContentMap {
+  id                    Int      @id @default(autoincrement())
+  hubName               String   @map("hub_name")
+  articleType           String   @map("article_type") // "hub" | "spoke" | "news"
+  title                 String
+  slug                  String?  @unique
+  mainEntity            String   @map("main_entity")
+  supportingEntities    String[] @map("supporting_entities")
+  targetKeywords        String[] @map("target_keywords")
+  searchVolumeEst       Int?     @map("search_volume_est")
+  keywordDifficulty     String?  @map("keyword_difficulty")
+  targetAudience        String?  @map("target_audience")
+  status                String   @default("planned") // planned|drafting|finalized|published|needs_update
+  scheduledDate         DateTime? @map("scheduled_date") @db.Date
+  publishedDate         DateTime? @map("published_date") @db.Date
+  publishedUrl          String?  @map("published_url")
+  parentHubId           Int?     @map("parent_hub_id")
+  contentNotes          String?  @map("content_notes")
+  suggestedExternalLinks String[] @map("suggested_external_links")
+  internalLinksTo       String[] @map("internal_links_to")
+  wordCount             Int?     @map("word_count")
+  qaScore               String?  @map("qa_score")
+  authorName            String?  @map("author_name")
+  source                String   @default("engine") // "engine" | "external"
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  parentHub        ContentMap?        @relation("HubSpokes", fields: [parentHubId], references: [id])
+  spokes           ContentMap[]       @relation("HubSpokes")
+  articleDocuments ArticleDocument[]
+  articleHtmls     ArticleHtml[]
+  sourceLinks      InternalLink[]     @relation("SourceArticle")
+  targetLinks      InternalLink[]     @relation("TargetArticle")
+  articlePhotos    ArticlePhoto[]
+  leads            Lead[]
+
+  @@map("content_map")
+}
+
+// ============================================================
+// ARTICLE STORAGE (structured + rendered)
+// ============================================================
+
+model ArticleDocument {
+  id           Int      @id @default(autoincrement())
+  articleId    Int      @map("article_id")
+  version      Int      @default(1)
+  canonicalDoc Json     @map("canonical_doc")
+  htmlOverrides Json?   @map("html_overrides")
+  finalizedAt  DateTime @default(now()) @map("finalized_at")
+  finalizedBy  String?  @map("finalized_by")
+  notes        String?
+
+  article ContentMap @relation(fields: [articleId], references: [id])
+
+  @@unique([articleId, version])
+  @@map("article_documents")
+}
+
+model ArticleHtml {
+  id              Int      @id @default(autoincrement())
+  articleId       Int      @map("article_id")
+  version         Int      @default(1)
+  documentVersion Int      @map("document_version")
+  htmlContent     String   @map("html_content")
+  metaTitle       String?  @map("meta_title")
+  metaDescription String?  @map("meta_description")
+  schemaJson      String?  @map("schema_json")
+  finalizedAt     DateTime @default(now()) @map("finalized_at")
+  finalizedBy     String?  @map("finalized_by")
+  qaScore         String?  @map("qa_score")
+  qaFailures      Int      @default(0) @map("qa_failures")
+  notes           String?
+
+  article ContentMap @relation(fields: [articleId], references: [id])
+
+  @@unique([articleId, version])
+  @@map("article_html")
+}
+
+// ============================================================
+// INTERNAL LINKING
+// ============================================================
+
+model InternalLink {
+  id             Int      @id @default(autoincrement())
+  sourceArticleId Int?    @map("source_article")
+  targetArticleId Int?    @map("target_article")
+  targetCorePage String?  @map("target_core_page")
+  anchorText     String?  @map("anchor_text")
+  linkType       String?  @map("link_type") // hub-to-spoke|spoke-to-hub|spoke-to-sibling|cross-cluster|to-core-page
+  isActive       Boolean  @default(false) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  sourceArticle ContentMap? @relation("SourceArticle", fields: [sourceArticleId], references: [id])
+  targetArticle ContentMap? @relation("TargetArticle", fields: [targetArticleId], references: [id])
+
+  @@map("internal_links")
+}
+
+// ============================================================
+// PHOTOS
+// ============================================================
+
+model Photo {
+  id                  Int      @id @default(autoincrement())
+  driveFileId         String   @unique @map("drive_file_id")
+  driveUrl            String   @map("drive_url")
+  cloudinaryPublicId  String?  @map("cloudinary_public_id")
+  cloudinaryUrl       String?  @map("cloudinary_url")
+  filename            String
+  category            String?
+  description         String?
+  altText             String?  @map("alt_text")
+  classification      String   @default("informative") // "informative" | "decorative"
+  vineyardName        String?  @map("vineyard_name")
+  season              String?
+  widthPx             Int?     @map("width_px")
+  heightPx            Int?     @map("height_px")
+  uploadedToCdn       Boolean  @default(false) @map("uploaded_to_cdn")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  articlePhotos ArticlePhoto[]
+
+  @@map("photos")
+}
+
+model ArticlePhoto {
+  articleId Int    @map("article_id")
+  photoId   Int    @map("photo_id")
+  position  String? // "hero" | "inline-1" | "inline-2" etc.
+
+  article ContentMap @relation(fields: [articleId], references: [id])
+  photo   Photo      @relation(fields: [photoId], references: [id])
+
+  @@id([articleId, photoId])
+  @@map("article_photos")
+}
+
+// ============================================================
+// LEAD CAPTURE
+// ============================================================
+
+model Lead {
+  id            Int      @id @default(autoincrement())
+  email         String
+  firstName     String?  @map("first_name")
+  sourceArticleId Int?   @map("source_article")
+  sourceUrl     String?  @map("source_url")
+  captureType   String   @map("capture_type") // newsletter|allocation|tour|content_upgrade|waitlist
+  hubTopic      String?  @map("hub_topic")
+  wineInterest  String?  @map("wine_interest")
+  travelDates   String?  @map("travel_dates")
+  ipCountry     String?  @map("ip_country")
+  utmSource     String?  @map("utm_source")
+  utmMedium     String?  @map("utm_medium")
+  utmCampaign   String?  @map("utm_campaign")
+  syncedToEsp   Boolean  @default(false) @map("synced_to_esp")
+  espContactId  String?  @map("esp_contact_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  sourceArticle ContentMap? @relation(fields: [sourceArticleId], references: [id])
+  events        LeadEvent[]
+
+  @@unique([email, sourceArticleId, captureType])
+  @@map("leads")
+}
+
+model LeadEvent {
+  id         Int      @id @default(autoincrement())
+  leadId     Int      @map("lead_id")
+  eventType  String   @map("event_type") // capture|content_upgrade_download|allocation_submitted|tour_booked|repeat_visit
+  eventData  Json?    @map("event_data")
+  articleId  Int?     @map("article_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  lead Lead @relation(fields: [leadId], references: [id])
+
+  @@map("lead_events")
+}

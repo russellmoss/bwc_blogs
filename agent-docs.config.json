@@ -1,0 +1,132 @@
+{
+  "$schema": "./agent-docs.schema.json",
+  "projectName": "BWC Content Engine",
+  "techStack": {
+    "framework": "Next.js 14 (App Router)",
+    "language": "TypeScript"
+  },
+  "docsDir": "docs/",
+  "generatedDir": "docs\\_generated\\",
+  "architectureFile": "docs\\ARCHITECTURE.md",
+  "agentConfigFile": "CLAUDE.md",
+  "additionalAgentConfigs": [],
+  "autoFix": {
+    "generators": true,
+    "narrative": {
+      "enabled": true,
+      "engine": "api",
+      "review": false,
+      "narrativeTriggers": [
+        "api-routes",
+        "prisma",
+        "env"
+      ],
+      "additionalNarrativeTargets": [
+        "README.md"
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "maxTokens": 32000,
+      "timeout": 120000
+    }
+  },
+  "scanPaths": {
+    "apiRoutes": "src/app/api/",
+    "pageRoutes": "src/app/",
+    "prismaSchema": "prisma/schema.prisma",
+    "envFile": ".env.example",
+    "sourceDir": "src/"
+  },
+  "categories": [
+    {
+      "id": "prisma",
+      "name": "Prisma Schema",
+      "emoji": "🗄️",
+      "filePattern": "prisma/schema.prisma",
+      "patternType": "exact",
+      "docTarget": "Database Models section",
+      "genCommand": "npm run gen:models"
+    },
+    {
+      "id": "env",
+      "name": "Environment Variables",
+      "emoji": "🔑",
+      "filePattern": ".env.example",
+      "patternType": "exact",
+      "docTarget": "Environment Variables section",
+      "genCommand": "npm run gen:env"
+    },
+    {
+      "id": "api-routes",
+      "name": "API Routes",
+      "emoji": "📡",
+      "filePattern": "^src/app/api/.+/route\\.ts$",
+      "patternType": "regex",
+      "docTarget": "API Routes section",
+      "genCommand": "npm run gen:api-routes"
+    },
+    {
+      "id": "page-routes",
+      "name": "Page Routes",
+      "emoji": "📄",
+      "filePattern": "^src/app/.+/page\\.tsx$",
+      "patternType": "regex",
+      "docTarget": "Page Routes section",
+      "genCommand": null
+    }
+  ],
+  "baselines": {
+    "largeFileThreshold": 500,
+    "largeFileCount": null,
+    "todoCount": null,
+    "highVulnCount": null,
+    "deadExportCount": null
+  },
+  "workflows": {
+    "docsAudit": {
+      "enabled": true,
+      "triggerPaths": [
+        "src/app/api/**",
+        "src/app/*/page.tsx",
+        ".env.example",
+        "prisma/schema.prisma"
+      ]
+    },
+    "refactorAudit": {
+      "enabled": true,
+      "schedule": "0 8 * * 0",
+      "labels": [
+        "refactoring",
+        "automated-audit"
+      ]
+    }
+  },
+  "integrations": {
+    "github": {
+      "issueLabels": {
+        "docsAudit": [
+          "documentation",
+          "automated-audit"
+        ],
+        "refactorAudit": [
+          "refactoring",
+          "automated-audit"
+        ]
+      }
+    }
+  },
+  "envCategories": [
+    {
+      "prefix": "NEXTAUTH_",
+      "category": "Auth (NextAuth)"
+    },
+    {
+      "prefix": "DATABASE_",
+      "category": "Database"
+    },
+    {
+      "prefix": "NEXT_PUBLIC_",
+      "category": "Next.js Public"
+    }
+  ]
+}

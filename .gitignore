@@ -60,3 +60,7 @@ client_secret_*.json
 
 # SSL certificates
 *.pem
+
+.vercel
+
+/src/generated/prisma
