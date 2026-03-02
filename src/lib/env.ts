@@ -18,5 +18,8 @@ export const env = {
   CLOUDINARY_URL: optionalEnv('CLOUDINARY_URL', ''),
   CLOUDINARY_CLOUD_NAME: optionalEnv('CLOUDINARY_CLOUD_NAME', ''),
   CLOUDINARY_UPLOAD_PRESET: optionalEnv('CLOUDINARY_UPLOAD_PRESET', 'blog'),
+  ANTHROPIC_SMALL_MODEL: optionalEnv('ANTHROPIC_SMALL_MODEL', 'claude-sonnet-4-5-20250929'),
+  ANTHROPIC_MAX_OUTPUT_TOKENS: optionalEnv('ANTHROPIC_MAX_OUTPUT_TOKENS', '16384'),
+  ENABLE_WEB_SEARCH: optionalEnv('ENABLE_WEB_SEARCH', 'true'),
   BWC_SITE_URL: optionalEnv('BWC_SITE_URL', 'https://www.bhutanwine.com'),
 } as const;

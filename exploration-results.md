@@ -1,201 +1,285 @@
-# Exploration Results — Guide 4: Canonical Article Schema + Article Renderer
+# Exploration Results — Guide 5: Orchestration Layer + Claude API
 
-**Date:** 2026-03-02
-**Prepared by:** 3-agent exploration team (code-inspector, integration-verifier, pattern-finder)
-**Source files:** code-inspector-findings.md, integration-verifier-findings.md, pattern-finder-findings.md
+**Generated:** 2026-03-02
+**Target:** Guide 5 — the core generation engine
+**Previous guides completed:** 1, 2, 3, 4
 
 ---
 
 ## 1. Current Build State
 
-**Guides complete:** 1 (Foundation), 2 (Content Map), 3 (Onyx RAG Integration)
+### Guides Completed
+| Guide | Title | Status |
+|---|---|---|
+| 1 | Foundation — DB, Auth, Types, agent-guard | ✅ Complete |
+| 2 | Content Map — CSV Import, CRUD API, Seed Data | ✅ Complete |
+| 3 | Onyx RAG Integration | ✅ Complete |
+| 4 | Canonical Article Schema + Article Renderer | ✅ Complete |
 
-**Inventory:**
+### Inventory Summary
 | Category | Count | Details |
 |---|---|---|
-| Prisma models | 9 | User, ContentMap, ArticleDocument, ArticleHtml, Photo, ArticlePhoto, InternalLink, Lead, LeadEvent |
-| Database rows | 50 total | users=1, content_map=39, internal_links=10, all others=0 |
-| API routes | 9 | health, auth, users (2), content-map (3), onyx (2) |
-| Type files | 9 | article, api, auth, claude, content-map, onyx, photo, renderer, qa |
-| Lib modules | 6 | db, auth, env, cloudinary (stub), claude (stub), onyx, content-map |
-| Components | 0 | Expected — UI starts in Guide 6 |
+| Prisma models | 8 | User, ContentMap, ArticleDocument, ArticleHtml, InternalLink, Photo, ArticlePhoto, Lead, LeadEvent |
+| API routes | 11 | health, auth, users (2), content-map (3), onyx (2), articles (2) |
+| TypeScript type files | 10 | auth, article, renderer, qa, onyx, claude, photo, content-map, api, next-auth.d.ts |
+| Library modules | 6 dirs | db, auth, env, content-map, onyx, article-schema, renderer |
+| UI components | 0 | No components yet (Guide 6 scope) |
+| Database rows | content_map: 39 (8 hubs, 31 spokes, all parentHubId wired), internal_links: 10 (core pages), users: 1, article_documents: 0, article_html: 0 |
 
-**Integration health:**
-| Service | Status | Notes |
-|---|---|---|
-| Neon Postgres | OK | Pooled connection working, all 9 tables exist |
-| Onyx RAG | OK | Health 200 (125ms), search returns KB documents |
-| Claude API | OK | Completions, web_search tool, streaming verified |
-| Cloudinary | OK | API creds valid, CDN delivery with transforms working |
-| Local build | OK | Zero TS errors, all 12 routes compile |
-| Vercel deployment | STALE | /api/health works but Guide 2-3 routes return 404 — needs push |
+### Build Health
+- `npm run build`: ✅ **Passes with zero errors** — all 13 routes + pages compile
+- All 11 API routes render as dynamic (ƒ) in the build output
+- Static pages: `/`, `/_not-found`, `/login`
 
 ---
 
 ## 2. Next Guide Target
 
-**Guide 4: Canonical Article Schema + Article Renderer** — marked CRITICAL in orchestration doc.
+### Guide 5: Orchestration Layer + Claude API — ⚡ CRITICAL
 
-**What the orchestration doc says it must produce:**
-- `src/lib/article-schema/` — Zod schemas for CanonicalArticleDocument, validation functions, repair pass logic
-- `src/lib/renderer/` — Renderer pipeline, component templates, CSS embedding, JSON-LD builder, Cloudinary URL builder
-- `src/lib/renderer/compiled-template.ts` — Embedded Compiled Template components + stylesheet
-- `src/app/api/articles/render/route.ts` — POST (canonical doc + overrides -> rendered HTML)
-- `src/app/api/articles/validate/route.ts` — POST (unknown JSON -> validation result)
-- Sample canonical document fixture for testing
-- `scripts/test-guide-4.ts`
+**From orchestration doc §7 (line 770):**
 
-**Relevant architecture doc sections:**
-- Section 3D step 5 — Validation pipeline (schema validation, repair pass, link checks, source flagging)
-- Section 3D step 6 — Article Renderer pipeline (component selection, Cloudinary URLs, JSON-LD, override application)
-- Section 3E — Canonical Article Document schema (full JSON example with all node types)
-- Section 3F — Compiled Template structure (dual-purpose: Claude reference + renderer consumption)
-- Section 3E rendered output example — Expected HTML output format with BEM classes
+> The core generation engine — the 7-layer system prompt assembly, Claude API streaming calls, structured output parsing, web search tool integration, and post-generation validation.
 
-**File ownership (orchestration doc section 5E):** Guide 4 owns `src/app/api/articles/render/`, `src/app/api/articles/validate/`, `src/lib/renderer/`, `src/lib/article-schema/`
+**Depends on:** Guides 1, 2, 3, 4 (all complete)
+
+**Files to Create (from §5E):**
+```
+src/lib/prompt-assembly/        ← 7-layer system prompt builders
+src/lib/orchestration/          ← Generation orchestrator, conversation manager, streaming parser
+src/lib/claude/                 ← Full Anthropic SDK client (replaces current stub)
+src/app/api/articles/generate/  ← POST: streaming generation endpoint
+  route.ts
+src/app/api/links/verify/       ← POST: batch link verification
+  route.ts
+scripts/test-guide-5.ts         ← Integration test
+```
+
+**None of these directories exist yet** — confirmed via filesystem check.
+
+**Architecture doc references:**
+- §3D: The Orchestration Layer (line 989) — full orchestration flow
+- §3E: Generation Output (line 1097) — Canonical Article Document lifecycle
+- §3J: Web Search Integration (line 1870) — web_search tool config
+- 7-Layer System Prompt diagram (line 1000-1070)
 
 ---
 
 ## 3. Dependencies Satisfied
 
-### TypeScript Types — ALL PRESENT
+### 3A. TypeScript Types — All Present ✅
 
-| Type | File | Fields | Status |
-|---|---|---|---|
-| CanonicalArticleDocument | src/types/article.ts | 22 fields (version through dataNosnippetSections) | PRESENT — matches spec exactly |
-| ArticleSection | src/types/article.ts | id, heading, headingLevel (2\|3), content: ContentNode[] | PRESENT |
-| ContentNode (union) | src/types/article.ts | 7 variants: paragraph, image, pullQuote, keyFacts, table, list, callout | PRESENT |
-| ImagePlacement | src/types/article.ts | photoId (nullable), src, alt, caption, classification, width, height | PRESENT |
-| AuthorInfo | src/types/article.ts | name, credentials, bio, linkedinUrl | PRESENT |
-| FAQItem | src/types/article.ts | question, answer | PRESENT |
-| InternalLinkRef | src/types/article.ts | targetUrl, targetArticleId, targetCorePage, anchorText, linkType, sectionId | PRESENT |
-| ExternalLinkRef | src/types/article.ts | url, anchorText, trustTier, sourceName, sectionId | PRESENT |
-| SchemaFlags | src/types/article.ts | blogPosting, faqPage, product (all boolean) | PRESENT |
-| RendererInput | src/types/renderer.ts | document, htmlOverrides (nullable), templateVersion | PRESENT |
-| RendererOutput | src/types/renderer.ts | html, metaTitle, metaDescription, schemaJson, wordCount | PRESENT |
-| HtmlOverride | src/types/renderer.ts | path, html, reason | PRESENT |
-| CloudinaryTransform | src/types/photo.ts | width, format, quality, additionalParams | PRESENT |
-| Photo | src/types/photo.ts | 16 fields matching Prisma model | PRESENT |
-| ErrorCode | src/types/api.ts | Includes RENDER_ERROR (line 28) | PRESENT |
-
-### Library Modules — ALL PRESENT
-
-| Module | Import Path | Status |
-|---|---|---|
-| Prisma singleton | `@/lib/db` | PRESENT |
-| requireRole | `@/lib/auth/session` | PRESENT |
-| env (CLOUDINARY_CLOUD_NAME) | `@/lib/env` | PRESENT |
-
-### Database Tables — ALL PRESENT
-
-| Table | Rows | Guide 4 Usage |
-|---|---|---|
-| article_documents | 0 | Schema target — Guide 4 validates docs that will be stored here by Guide 11 |
-| article_html | 0 | Renderer output shape maps to this table's columns |
-| photos | 0 | Renderer reads cloudinary_public_id for URL construction (no rows yet — correct) |
-| content_map | 39 | FK target for articleId field |
-
-### External Services — ALL VERIFIED
-
-| Service | Status | Guide 4 Needs |
-|---|---|---|
-| Cloudinary CDN | OK | URL construction only (no uploads) — cloud name `deahtb4kj` |
-| Neon Postgres | OK | No direct DB calls from renderer (pure function) |
-
----
-
-## 4. Dependencies Missing or Mismatched
-
-### Files Guide 4 Must Create (ALL confirmed absent)
-
-| File | Status |
-|---|---|
-| src/lib/article-schema/ (entire directory) | MISSING |
-| src/lib/renderer/ (entire directory) | MISSING |
-| src/app/api/articles/ (entire directory) | MISSING |
-| scripts/test-guide-4.ts | MISSING |
-
-### Gaps and Constraints
-
-1. **No buildCloudinaryUrl() exists anywhere** — Guide 4 must create this in `src/lib/renderer/cloudinary.ts`. URL pattern: `https://res.cloudinary.com/{cloudName}/image/upload/{transforms}/{publicId}`. Use `env.CLOUDINARY_CLOUD_NAME` from `@/lib/env`.
-
-2. **article_html has NO wordCount column** — `RendererOutput.wordCount` is ephemeral (computed at render time but not persisted in `article_html`). Guide 11 stores word count in `content_map.word_count` at finalization. Guide 4's renderer computes and returns it but doesn't need to persist it.
-
-3. **ImagePlacement.photoId can be null** — When null, the renderer should use the `src` field directly (external URL). When non-null, construct a Cloudinary URL from the photo's `cloudinaryPublicId`. Since `photos` table has 0 rows, all test fixtures should use `photoId: null` with direct `src` URLs, or use `photoId` with mock `cloudinaryPublicId` values.
-
-4. **htmlOverrides is `Json?` (nullable) in Prisma** — Renderer must treat `null` as empty array.
-
-5. **Zod version is v4 (^4.3.6)** — API differs from v3. Key differences: `z.discriminatedUnion()` API, error formatting methods, `z.infer<>` usage. Guide must verify all Zod APIs against v4 docs.
-
-6. **BWC Brand Style Guide and Master SOP are now in the repo** — Available at `docs/Bhutan Wine Company — Brand Style Guide for HTML Blog Posts (3).md` and `docs/BWC Master Content Engine SOP.md`. Full CSS variables, font stacks, BEM classes, component patterns, and FAIL-level QA checks have been extracted into Appendices C and D of this document. The Compiled Template (`src/lib/renderer/compiled-template.ts`) must embed these CSS/component patterns exactly.
-
-7. **No broken imports** — Zero existing files reference Guide 4 modules. Clean integration surface.
-
-8. **`ValidationResult` type not defined** — The orchestration doc references it but it does NOT exist in `src/types/`. Guide 4 must define and export it from `src/types/api.ts`:
+**`src/types/claude.ts`** — Already defines:
 ```typescript
-export interface ValidationResult {
-  valid: boolean;
-  errors: { path: string; message: string }[];
-  warnings: string[];
+interface ConversationMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+interface PromptLayer {
+  name: string;
+  content: string;
+  tokenEstimate: number;
+}
+
+interface GenerationRequest {
+  articleId: number;
+  userMessage: string;
+  conversationHistory: ConversationMessage[];
+  currentDocument: CanonicalArticleDocument | null;
+}
+
+interface GenerationResponse {
+  document: CanonicalArticleDocument;
+  conversationReply: string;
+  tokensUsed: { input: number; output: number; };
+  webSearchResults: WebSearchResult[];
+}
+
+interface WebSearchResult {
+  url: string;
+  title: string;
+  snippet: string;
 }
 ```
 
-9. **`ImagePlacement.loading` not in type** — The `loading` attribute (`"eager"` for hero, `"lazy"` for others) is NOT in the `ImagePlacement` interface. The renderer must derive it from context (hero position vs inline). This is correct by design.
+**`src/types/api.ts`** — Provides:
+- `ApiSuccess<T>`, `ApiError`, `ApiResponse<T>` response wrappers
+- `ErrorCode` union (includes `GENERATION_FAILED`, `ONYX_UNAVAILABLE`, `LINK_VERIFICATION_FAILED`)
+- `ValidationResult` with `valid`, `errors[]`, `warnings[]`
 
-10. **Zod v4 discriminatedUnion confirmed working** — Runtime tested: `z.discriminatedUnion("type", [...])` works for ContentNode union. `error.flatten()` returns `{ fieldErrors, formErrors }` same as v3. BREAKING: error messages changed to `"Invalid input: expected X, received Y"` — do not hardcode message strings in tests.
+**`src/types/article.ts`** — Complete `CanonicalArticleDocument` with all sub-types:
+- `ArticleSection`, all 7 `ContentNode` variants, `ImagePlacement`, `InternalLinkRef`, `ExternalLinkRef`, `FAQItem`, `SchemaFlags`, `AuthorInfo`, `CaptureType`, `TrustTier`
+
+**`src/types/onyx.ts`** — `OnyxSearchResult`, `OnyxContext`, `OnyxHealthStatus`
+
+**`src/types/renderer.ts`** — `RendererInput`, `RendererOutput`, `HtmlOverride`
+
+**`src/types/content-map.ts`** — `ContentMapEntry`, `InternalLinkEntry`, `ArticleType`, `ArticleStatus`
+
+**`src/types/photo.ts`** — `Photo`, `PhotoManifest`, `CloudinaryTransform`
+
+### 3B. Library Modules — All Dependencies Present ✅
+
+**Onyx client (`src/lib/onyx/`)** — Guide 5 Layer 4 needs:
+- `searchOnyxMulti(queries, filters)` → parallel multi-query with graceful fallback
+- `buildSearchQueries(brief: ArticleBrief)` → generates 1-5 Onyx queries from article metadata
+- `assembleOnyxContext(contexts: OnyxContext[])` → formats results into prompt-ready string (8000 char cap, dedup, score-ranked)
+- All exported from `src/lib/onyx/index.ts`
+
+**Article schema (`src/lib/article-schema/`)** — Guide 5 post-generation pipeline needs:
+- `validateCanonicalDocument(doc: unknown)` → Zod + SOP checks → `ValidationResult`
+- `repairCanonicalDocument(doc: unknown)` → auto-fix missing fields, dedup IDs, clamp heading levels → `{ repaired, changes, valid }`
+- `CanonicalArticleDocumentSchema` → Zod schema for `safeParse`
+- All exported from `src/lib/article-schema/index.ts`
+
+**Renderer (`src/lib/renderer/`)** — Guide 5 calls after validation:
+- `renderArticle(input: RendererInput)` → `RendererOutput` (pure function, no DB/API calls)
+- Renderer internally calls `repairCanonicalDocument` before rendering
+- Also exports: `buildCloudinaryUrl`, `buildSchemaJson`, `BWC_STYLESHEET`, `GOOGLE_FONTS_HTML`, `STYLE_BLOCK`, `TEMPLATE_VERSION`
+
+**Database (`src/lib/db/`)** — Guide 5 needs for Layers 3 and 5:
+- `prisma` singleton from `src/lib/db/index.ts`
+- `retryDatabaseOperation()` from `src/lib/db/retry.ts`
+- Prisma models: `contentMap`, `internalLink` for article brief + link graph queries
+
+**Auth (`src/lib/auth/session.ts`)** — Guide 5 routes need:
+- `requireRole("admin", "editor")` for POST endpoints
+
+### 3C. Database Tables — All Present ✅
+
+**`content_map`** — 39 rows (8 hubs + 31 spokes, 0 news), with `parentHubId` FK relationships verified correct
+- Hub breakdown: Complete Guide to Bhutan Wine (6 spokes), Emerging Wine Regions (4), High-Altitude Viticulture (3), Sustainable Winemaking (4), Luxury Travel in Bhutan (5), Story of Wine in Bhutan (4), Wine Tourism Beyond Europe (2), Bhutan Exclusive Travel (3)
+- All entries have status `"planned"`, slug populated
+- Fields used by Guide 5 Layer 3 (Article Brief): `title`, `articleType`, `hubName`, `mainEntity`, `supportingEntities`, `targetKeywords`, `contentNotes`, `parentHubId`, `slug`, `publishedUrl`, `status`
+
+**`internal_links`** — 10 rows (all `linkType = 'to-core-page'`)
+- Core BWC pages: grapes-vineyards, our-wine, first-release, visit-us, about-us, in-the-news, gallery, inquiry, contact-us, 2023-first-barrel
+- Guide 5 Layer 5 needs these + any published article URLs from content_map
+
+**`article_documents`** — 0 rows (empty, will be written by Guide 11)
+
+**`article_html`** — 0 rows (empty, will be written by Guide 11)
+
+### 3D. Environment Variables ✅
+
+All Guide 5 env vars present in `.env.example`:
+- `ANTHROPIC_API_KEY=sk-ant-...`
+- `ANTHROPIC_MODEL=claude-sonnet-4-5-20250929`
+- `ANTHROPIC_SMALL_MODEL=claude-sonnet-4-5-20250929`
+- `ANTHROPIC_MAX_OUTPUT_TOKENS=16384`
+- `ENABLE_WEB_SEARCH=true`
+- Onyx vars: `ONYX_BASE_URL`, `ONYX_API_URL`, `ONYX_API_KEY`, `ONYX_INDEX_NAME`, `ONYX_SEARCH_TIMEOUT_MS`
+
+### 3E. Static Prompt Documents ✅
+
+Layer 1 and 2a source documents exist:
+- `docs/BWC Master Content Engine SOP.md` — 48,402 bytes (Layer 1)
+- `docs/Bhutan Wine Company — Brand Style Guide for HTML Blog Posts (3).md` — 29,486 bytes (Layer 2a)
+- Compiled Template reference available via `src/lib/renderer/compiled-template.ts` (Layer 2b)
+
+---
+
+## 4. Dependencies Missing or Need Extending
+
+### 4A. Types That Need Extension
+
+**`src/types/claude.ts`** — Current types are close but need additions for:
+
+1. **`GenerateArticleRequest` vs `GenerationRequest`**: The orchestration doc §5B calls it `GenerateArticleRequest` with `photoManifest: PhotoManifest | null` field. The current `GenerationRequest` is missing `photoManifest`. Guide 5 should extend or rename.
+
+2. **Streaming types**: No streaming-specific types exist yet. Guide 5 needs:
+   - `StreamingGenerationEvent` — discriminated union for SSE events (e.g., `{type: "chunk", data: ...}`, `{type: "section_complete", ...}`, `{type: "done", document: ...}`, `{type: "error", ...}`)
+   - Or a simpler approach that streams the JSON chunks directly
+
+3. **`GenerationResponse`** — Current type includes `html: string` in the orchestration doc's `GenerateArticleResponse` (§5B line 369-373) but the actual `GenerationResponse` in `claude.ts` does NOT include `html`. The orchestration doc shows:
+   ```typescript
+   interface GenerateArticleResponse {
+     document: CanonicalArticleDocument;
+     html: string;
+     validationResult: ValidationResult;
+     conversationReply: string;
+   }
+   ```
+   Current `GenerationResponse` has `tokensUsed` and `webSearchResults` instead.
+
+   **Decision needed:** Should the API return `html` (run renderer server-side) or let the client call `/api/articles/render` separately? The architecture doc suggests the orchestration layer renders server-side.
+
+### 4B. Modules That Don't Exist Yet
+
+All Guide 5 directories are **completely absent**:
+- `src/lib/prompt-assembly/` — needs: layer builders for all 7 layers, main assembler
+- `src/lib/orchestration/` — needs: orchestrator, conversation manager, streaming JSON parser
+- `src/lib/claude/` — needs: full Anthropic SDK client replacing the 4-line stub
+- `src/app/api/articles/generate/route.ts` — needs: POST streaming endpoint
+- `src/app/api/links/verify/route.ts` — needs: POST batch link verification
+
+### 4C. The Claude Client Stub
+
+**Current state** (`src/lib/claude/client.ts`):
+```typescript
+export const claudeConfig = {
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
+  model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929',
+};
+```
+
+This is a **4-line config object**. Guide 5 must replace it with a full Anthropic SDK integration:
+- `@anthropic-ai/sdk` package installation
+- Streaming message creation
+- `web_search` tool configuration
+- Structured JSON output parsing
+- Token usage tracking
+- Error handling with retries
+
+### 4D. Missing `env.ts` Entries
+
+`src/lib/env.ts` does NOT expose:
+- `ANTHROPIC_SMALL_MODEL`
+- `ANTHROPIC_MAX_OUTPUT_TOKENS`
+- `ENABLE_WEB_SEARCH`
+
+Guide 5 needs to extend `env.ts` to include these.
 
 ---
 
 ## 5. Established Patterns to Follow
 
-### API Route Handler Template (HIGH consistency — all 8 business routes identical)
+### 5A. API Route Handler Pattern
 
+**Canonical example** — `src/app/api/onyx/search/route.ts`:
 ```typescript
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/session";
+import { searchOnyx } from "@/lib/onyx";
 import { z } from "zod";
 
-const InputSchema = z.object({
-  field: z.string().min(1),
+const SearchRequestSchema = z.object({
+  query: z.string().min(1).max(500),
+  filters: z.object({ sourceType: z.array(z.string()).optional() }).optional(),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole("admin", "editor");  // ALWAYS FIRST
-
+    await requireRole("admin", "editor");
     const body = await request.json();
-    const parsed = InputSchema.safeParse(body);
-
+    const parsed = SearchRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid input", details: parsed.error.flatten() } },
         { status: 400 }
       );
     }
-
-    // business logic using parsed.data
+    const result = await searchOnyx(parsed.data.query, ...);
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    if (message === "AUTH_REQUIRED") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
-        { status: 401 }
-      );
-    }
-    if (message === "AUTH_FORBIDDEN") {
-      return NextResponse.json(
-        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-        { status: 403 }
-      );
-    }
-    // Guide 4: add RENDER_ERROR before INTERNAL_ERROR
-    if (message === "RENDER_ERROR") {
-      return NextResponse.json(
-        { success: false, error: { code: "RENDER_ERROR", message: "Article rendering failed" } },
-        { status: 500 }
-      );
-    }
+    // Error code matching chain:
+    if (message === "AUTH_REQUIRED") → 401
+    if (message === "AUTH_FORBIDDEN") → 403
+    if (message === "ONYX_UNAVAILABLE") → 503
+    // fallback:
     return NextResponse.json(
       { success: false, error: { code: "INTERNAL_ERROR", message } },
       { status: 500 }
@@ -204,395 +288,262 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-### Error Handling Pattern
-- `throw new Error("RENDER_ERROR")` from lib modules — plain Error, code as message string
-- No custom error classes anywhere in codebase
-- Catch block: AUTH_REQUIRED (401) -> AUTH_FORBIDDEN (403) -> service-specific -> INTERNAL_ERROR (500)
+**Pattern rules:**
+1. Imports: `NextRequest`, `NextResponse`, `requireRole`, service module, `z`
+2. Zod schema defined at module level (not inline)
+3. Auth check first: `await requireRole("admin", "editor")`
+4. Parse body → `safeParse` → return 400 on failure
+5. Call service → return `{ success: true, data }`
+6. Catch block: string-match `error.message` against known error codes
+7. Response format: `{ success: true/false, data/error: { code, message } }`
 
-### Zod Validation Pattern
-- Schemas co-located at top of route.ts files (for route input validation)
-- PascalCase naming: `RenderRequestSchema`, `ValidateRequestSchema`
-- Always `.safeParse()`, never `.parse()`
-- Failure: `parsed.error.flatten()` in response details
-- Guide 4 exception: `src/lib/article-schema/` is the first lib-owned Zod module (for document validation separate from route input)
+### 5B. Error Handling Pattern
 
-### Lib Module Structure (from src/lib/onyx/ — most mature example)
-```
-src/lib/<domain>/
-  index.ts         — barrel re-exports (named only, no defaults)
-  <concern>.ts     — separate files per concern
-```
-Barrel pattern:
+Errors are thrown as plain `Error` objects with the error code as the message:
 ```typescript
-export { functionA, functionB } from './file-a';
-export type { TypeA } from './file-a';
-export { functionC } from './file-b';
+throw new Error("ONYX_UNAVAILABLE");
+throw new Error("AUTH_REQUIRED");
+throw new Error("RENDER_ERROR");
 ```
 
-### Import Conventions
+Route handlers catch and match with `if (message === "CODE")`.
+
+Error codes from `src/types/api.ts`:
+`AUTH_REQUIRED`, `AUTH_FORBIDDEN`, `VALIDATION_ERROR`, `NOT_FOUND`, `GENERATION_FAILED`, `ONYX_UNAVAILABLE`, `RENDER_ERROR`, `QA_GATE_FAILED`, `CLOUDINARY_ERROR`, `LINK_VERIFICATION_FAILED`, `INTERNAL_ERROR`
+
+### 5C. External Service Call Pattern
+
+**Canonical example** — `src/lib/onyx/client.ts`:
+- `fetchWithRetry(url, options, timeoutMs)` — AbortController timeout + exponential backoff
+- Constants: `MAX_RETRIES = 3`, `BASE_DELAY_MS = 500`
+- Retryable: connection errors + 502/503/504
+- Non-retryable: 400/401/403/404
+- Response mapping function: snake_case → camelCase
+- Safe variant: `searchOnyxSafe()` → returns null on failure
+- Multi variant: `searchOnyxMulti()` → Promise.allSettled for parallel queries
+
+### 5D. Zod Validation Pattern
+
+**Schema validation** — `src/lib/article-schema/validate.ts`:
 ```typescript
-// 1. Framework
+const parsed = CanonicalArticleDocumentSchema.safeParse(doc);
+if (!parsed.success) {
+  for (const issue of parsed.error.issues) {
+    errors.push({ path: issue.path.join("."), message: issue.message });
+  }
+  return { valid: false, errors, warnings };
+}
+```
+
+**Request validation** (routes): `parsed.error.flatten()` for details.
+
+### 5E. Module Export Structure
+
+All `src/lib/*/` modules use barrel exports via `index.ts`:
+```typescript
+// src/lib/onyx/index.ts
+export { searchOnyx, searchOnyxSafe, searchOnyxMulti, getOnyxConfig } from './client';
+export type { OnyxSearchFilters } from './client';
+export { buildSearchQueries } from './query-builder';
+export type { ArticleBrief } from './query-builder';
+export { assembleOnyxContext } from './context-assembler';
+export { checkOnyxHealth } from './health-checker';
+```
+
+File naming: kebab-case. Function exports: named (no default exports).
+
+### 5F. Database Query Pattern
+
+Direct Prisma calls in routes (no abstraction layer):
+```typescript
+const entries = await prisma.contentMap.findMany({
+  select: contentMapSelect,
+  orderBy: { createdAt: "desc" },
+});
+```
+
+`retryDatabaseOperation()` available in `src/lib/db/retry.ts` for cold-start resilience.
+
+### 5G. Import Conventions
+
+```typescript
 import { NextRequest, NextResponse } from "next/server";
-// 2. Internal lib
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth/session";
-import { env } from "@/lib/env";
-// 3. Types (type-only imports)
-import type { RendererInput, RendererOutput } from "@/types/renderer";
-// 4. Third-party
+import { searchOnyx } from "@/lib/onyx";
+import { renderArticle } from "@/lib/renderer";
+import { validateCanonicalDocument, repairCanonicalDocument } from "@/lib/article-schema";
+import type { CanonicalArticleDocument } from "@/types/article";
+import type { ValidationResult } from "@/types/api";
 import { z } from "zod";
 ```
-Path alias: `@/` maps to `src/`. No other aliases.
 
-### Type Convention
-- `interface` for object shapes, `type` for unions/aliases
-- No `enum` keyword — string literal unions only
-- Discriminated unions: each member `extends` a base interface with narrow literal `type` field
+- `@/` path alias for all internal imports
+- `type` keyword for type-only imports
+- Third-party imports last
 
-### BEM & CSS Standards for Rendered HTML (from Brand Style Guide)
+### 5H. Streaming Pattern — NONE EXISTS YET
 
-**CSS Variables** — Must be embedded in `compiled-template.ts` `<style>` block:
-```css
-:root {
-  --bwc-gold: #bc9b5d;  --bwc-black: #000000;  --bwc-white: #ffffff;
-  --bwc-text-primary: #000000;  --bwc-text-secondary: #414141;
-  --bwc-text-dark-alt: #242323;  --bwc-text-footer: #292929;  --bwc-text-brown: #624c40;
-  --bwc-bg-cream: #fcf8ed;  --bwc-bg-peach: #f6ebe4;  --bwc-bg-light: #f7f7f7;
-  --bwc-bg-soft-gray: #e8e6e6;  --bwc-bg-blue: #c8eef5;  --bwc-bg-green: #316142;
-  --bwc-border-light: #cccccc;
-  --space-xs: 8px;  --space-sm: 16px;  --space-md: 24px;
-  --space-lg: 48px;  --space-xl: 80px;  --space-2xl: 120px;
-}
-```
-
-**Font Stack** (Google Fonts: Cormorant Garamond, Fraunces, Nunito Sans, Trirong):
-| Element | Font | Size | Weight | Color |
-|---|---|---|---|---|
-| h1 (article title) | Cormorant Garamond | 48px | 600 | `--bwc-gold` |
-| h2 (sections) | Fraunces | 36px | 400 | `--bwc-text-dark-alt` |
-| h3 (subsections) | Cormorant Garamond | 28px | 600 | `--bwc-text-primary` |
-| p, li (body) | Nunito Sans | 16px | 300 | `--bwc-text-primary` |
-| blockquote | Cormorant Garamond | 24px | 300 | `--bwc-text-brown` |
-| figcaption | Trirong | 13px | 400 | `--bwc-text-secondary` |
-| .lead/.intro | Fraunces | 21px | 400 | `--bwc-text-secondary` |
-| links | inherit | inherit | inherit | `--bwc-gold`, underline |
-
-**Mobile breakpoint** (768px): h1->38px, h2->30px, h3->24px, body stays 16px
-
-**Layout**: max-width 980px, prose target 680-760px, centered with auto margins
-
-**BEM Class Prefix**: `bwc-` for all blog output classes (e.g., `bwc-article`, `bwc-hero-image`, `bwc-pullquote`, `bwc-key-facts`, `bwc-executive-summary`, `bwc-figure`)
-
-**Component HTML Patterns** (from Brand Style Guide §17-18):
-- Hero: `<header class="blog-hero">` with `.eyebrow`, `h1`, `.lead`, `.meta` + `<time>`
-- Figure: `<figure>` + `<img>` + `<figcaption>` (no borders/shadows)
-- Pull quote: `<blockquote>` with gold left border (`3px solid var(--bwc-gold)`)
-- Key facts: `<aside class="bwc-key-facts">` + `<dl>` (definition list)
-- Body links: `color: var(--bwc-gold)`, underline, 1px thickness, 0.14em offset
-
-### Test Script Pattern (follow Guide 3)
-```typescript
-import dotenv from "dotenv";
-import path from "path";
-dotenv.config({ path: path.resolve(__dirname, "../.env") });  // FIRST
-
-let passed = 0;
-let failed = 0;
-
-function check(name: string, result: boolean, detail?: string) {
-  if (result) { console.log(`  PASS ${name}`); passed++; }
-  else { console.log(`  FAIL ${name}${detail ? ` -- ${detail}` : ""}`); failed++; }
-}
-
-async function test() {
-  // Dynamic imports AFTER env is loaded
-  const { validateCanonicalDocument } = await import("../src/lib/article-schema");
-  const { renderArticle } = await import("../src/lib/renderer");
-
-  // Tests here...
-
-  // API tests accept 200 or 401 (no auth sessions)
-  // Graceful handling when dev server not running
-
-  console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
-  process.exit(failed > 0 ? 1 : 0);
-}
-
-test();
-```
+**No existing route uses streaming.** Guide 5 will introduce the first streaming endpoint. The pattern must be established here. Based on the architecture doc, the approach is:
+- Server-Sent Events (SSE) or `ReadableStream` from the Next.js route
+- Claude SDK streams the response
+- Orchestration layer parses partial JSON as it arrives
+- Incremental chunks sent to the client
 
 ---
 
 ## 6. Integration Readiness
 
-| Service | Guide 4 Usage | Status | Notes |
-|---|---|---|---|
-| Cloudinary CDN | URL construction (no uploads) | OK | Cloud name: `deahtb4kj`. URL pattern: `https://res.cloudinary.com/deahtb4kj/image/upload/{transforms}/{publicId}` |
-| Neon Postgres | None (renderer is pure function) | OK | Available if needed for testing, but Guide 4 makes no DB calls |
-| Onyx RAG | None | OK | Not used by Guide 4 |
-| Claude API | None | OK | Not used by Guide 4 (Guide 5 scope) |
+| Service | Status | Notes |
+|---|---|---|
+| **Neon Postgres** | ✅ Verified LIVE | 39 content_map rows (8 hubs, 31 spokes, all parentHubId wired), 10 internal_links, 1 user. All 9 schema models present. |
+| **Onyx CE** | ✅ Verified LIVE | Health: HTTP 200 in 105ms. **33 documents indexed**, last index: 2026-03-02T13:24Z. Search: HTTP 200 in 90-468ms for "Bajo vineyard" — returns documents with relevance scores (top: 0.953), source attribution (`google_drive`), match highlights ("Bajo vineyard is completely flat, at around 4,000 feet in elevation"). Correct endpoint: `/api/admin/search`. |
+| **Claude API** | ✅ Verified LIVE | Basic completion: HTTP 200 in 1.67s, model `claude-sonnet-4-5-20250929` confirmed accessible. Streaming: SSE events firing correctly (`message_start`, `content_block_start`, `content_block_delta`). Web search tool: working, returned bhutanwine.com URL from test search. `@anthropic-ai/sdk` still needs to be installed as a package dependency. |
+| **Cloudinary** | ✅ Verified LIVE | API credentials valid. CDN delivery with transforms (`w_800,f_auto,q_auto`): HTTP 200 in 146ms. Guide 5 doesn't upload images but renderer uses `buildCloudinaryUrl()`. |
+| **Vercel Deployment** | ✅ Verified LIVE | `bwc-content-engine.vercel.app/api/health` → HTTP 200 in 293-378ms. |
 
-**Known quirks:**
-- Cloudinary CDN transforms confirmed working: `w_800,f_auto,q_auto` applied successfully in test
-- Photos table is empty — renderer must handle missing photo data gracefully (use `src` field from ImagePlacement when `photoId` is null)
-- Prisma EPERM warning on Windows during `prisma generate` (DLL file lock) — non-blocking, client works fine
+### Known Quirks
+
+1. **Onyx response time**: 4GB DigitalOcean droplet — search takes ~150-470ms. Client has 10s timeout + 3 retries with backoff. Note: `/api/direct-qa` returns 404 — correct endpoint per client.ts is `/api/admin/search`.
+2. **Claude streaming format**: Confirmed working via live test. SSE events: `message_start` → `content_block_start` → `content_block_delta` (repeated) → `content_block_stop` → `message_stop`. Guide 5 must parse these into partial JSON.
+3. **web_search tool**: Confirmed working in live test — returned real URLs. Architecture doc specifies `type: "web_search_20250305"`. Use latest SDK tool type.
+4. **ANTHROPIC_MAX_OUTPUT_TOKENS**: `.env.example` documents `16384`. A full hub article CanonicalArticleDocument (2500+ words) in JSON will be ~20K-30K characters, which fits within this limit.
+5. **Model ID format**: `.env` may have `claude-sonnet-4-5` (no date suffix) while API tests used `claude-sonnet-4-5-20250929`. Verify the generation pipeline resolves the correct model ID.
 
 ---
 
 ## 7. Risks and Blockers
 
-### BLOCKER: None
+### BLOCKER: .env ANTHROPIC_MAX_OUTPUT_TOKENS Mismatch ❌
 
-### MEDIUM RISK
-1. **Vercel deployment is stale** — Latest code (Guides 2-3) not pushed. `/api/content-map` and `/api/onyx/health` return 404 on deployed site. Action: push to Vercel before Guide 4 review/demo.
+**CRITICAL:** `.env` has `ANTHROPIC_MAX_OUTPUT_TOKENS="4096"` but `.env.example` documents `16384`. Hub articles (2500+ words as structured JSON) will exceed 4096 output tokens. **Must update `.env` to `16384` before Guide 5 generation runs.**
 
-### LOW RISK
-2. **Zod v4 API differences** — Codebase uses Zod ^4.3.6. Guide 4 creates the first complex nested Zod schema (CanonicalArticleDocument with discriminated unions). Must verify `z.discriminatedUnion()` and nested object APIs against Zod v4 docs, not v3.
+### Risk 1: Streaming JSON Parsing Complexity ⚠️
 
-3. **Prisma deprecation warning** — `package.json#prisma` config deprecated in Prisma 7. Non-blocking for Guide 4.
+Claude will stream a CanonicalArticleDocument as JSON text. Partial JSON is inherently invalid until complete. Options:
+- **Option A**: Stream the full response, parse JSON only when complete. Simple but no live preview.
+- **Option B**: Use a streaming JSON parser (e.g., `partial-json` or custom) to extract sections as they complete. Complex but enables incremental rendering.
+- **Option C**: Instruct Claude to output sections delimited by markers, parse each section individually. Middle ground.
 
-4. **Model alias inconsistency** — `.env` uses short alias `claude-sonnet-4-5` vs `.env.example` full `claude-sonnet-4-5-20250929`. Not relevant to Guide 4 (no Claude API calls).
+**Recommendation**: Start with Option A for Guide 5 (get the pipeline working), then optimize for streaming preview in Guide 6 when the UI exists.
 
-### RESOLVED (previously Risk 3)
-- ~~Compiled Template not in repo~~ — Brand Style Guide and SOP now available at `docs/Bhutan Wine Company — Brand Style Guide for HTML Blog Posts (3).md` and `docs/BWC Master Content Engine SOP.md`. Full CSS variables, font stacks, BEM classes, component patterns, and FAIL-level QA checks extracted. See Appendices C and D.
+### Risk 2: Token Budget for 7-Layer System Prompt ⚠️
+
+Layer sizes (estimated):
+- Layer 1 (SOP): ~48KB → ~12,000 tokens
+- Layer 2a (Brand Style Guide): ~29KB → ~7,000 tokens
+- Layer 2b (Compiled Template reference): ~5KB → ~1,200 tokens
+- Layer 3 (Article Brief): ~500 bytes → ~125 tokens
+- Layer 4 (KB Context): ~8KB cap → ~2,000 tokens
+- Layer 5 (Link Graph): ~2KB → ~500 tokens
+- Layer 6 (Photo Manifest): ~1KB → ~250 tokens
+- **Total system prompt: ~23,000 tokens**
+
+With `claude-sonnet-4-5` (200K context), this leaves ~160K for conversation history + output. Manageable but Layer 1 and 2a are large. Consider whether the full SOP text is needed every call or if a condensed version suffices.
+
+### Risk 3: web_search Tool Type Version
+
+Architecture doc references `web_search_20250305`. The Anthropic API may have updated this tool type. Guide 5 should use the latest SDK's tool type and verify it works.
+
+### Risk 4: No Streaming Pattern Precedent
+
+Guide 5 establishes the streaming pattern for the entire project. Guide 6 (UI) will consume this stream. The SSE format and event types chosen here will be locked in. Must design carefully.
+
+### Risk 5: Middleware Deprecation Warning (Non-blocking)
+
+Next.js 16.1.6 shows: `middleware` file convention deprecated — rename to `proxy` before Guide 6. Non-blocking for Guide 5 but will become an error in future Next.js versions.
+
+### Risk 6: Prisma Config Deprecation (Non-blocking)
+
+Prisma `package.json#prisma` config is deprecated — should migrate to `prisma.config.ts` before Prisma 7. Non-blocking for Guide 5.
 
 ---
 
 ## 8. Deviations from Plan
 
-### Deviation 1: CaptureType uses string literal union (not enum)
-The orchestration doc section 5B shows `ctaType: CaptureType` and `captureComponents: CaptureType[]`. The actual `src/types/article.ts` implements `CaptureType` as `"newsletter" | "allocation" | "tour" | "content_upgrade" | "waitlist"` — a string literal union, not an enum. This is consistent with the codebase convention (no `enum` keyword). The Zod schema must use `z.enum(["newsletter", "allocation", "tour", "content_upgrade", "waitlist"])`.
+### 8A. Type Naming Discrepancy
 
-### Deviation 2: InternalLinkRef has more fields than spec
-Orchestration doc section 5B shows `{ targetUrl, anchorText, context }`. Actual `src/types/article.ts` has `{ targetUrl, targetArticleId, targetCorePage, anchorText, linkType, sectionId }` — 6 fields vs 3. The Zod schema must match the ACTUAL type, not the abbreviated spec.
+Orchestration doc §5B calls them:
+- `GenerateArticleRequest` (with `photoManifest` field)
+- `GenerateArticleResponse` (with `html` and `validationResult` fields)
 
-### Deviation 3: ExternalLinkRef has different field names than spec
-Orchestration doc shows `{ url, anchorText, trustTier, newSource }`. Actual type has `{ url, anchorText, trustTier, sourceName, sectionId }` — `newSource` boolean is absent, `sourceName` and `sectionId` are added. The Zod schema must match the ACTUAL type.
+Actual types in `src/types/claude.ts`:
+- `GenerationRequest` (no `photoManifest`)
+- `GenerationResponse` (has `tokensUsed` and `webSearchResults` instead of `html` and `validationResult`)
 
-### Deviation 4: ContentNode variants have `id` field not shown in spec
-The orchestration doc's abbreviated schema shows content nodes without `id` fields, but the actual `src/types/article.ts` has every ContentNode extending `ContentNodeBase { type, id }`. The Zod schema must include `id: z.string()` on every content node.
+**Resolution**: Guide 5 should extend the existing types to match the orchestration doc's contract, or define route-specific request/response types that bridge the gap.
 
-### Deviation 5: No `newSource` field on ExternalLinkRef
-The architecture doc section 3E example JSON shows `"newSource": false` on external links, but the actual TypeScript type in `src/types/article.ts` does NOT have a `newSource` field. The Zod schema should match the actual TypeScript type. If `newSource` is needed, it must be added to the TypeScript interface first (which is Guide 4's prerogative since it owns schema validation).
+### 8B. `env.ts` Incomplete
 
-### Deviation 6: Cloudinary stubs use process.env directly
-`src/lib/cloudinary/client.ts` and `src/lib/claude/client.ts` use `process.env.*` directly instead of `import { env } from "@/lib/env"`. These are placeholder stubs. Guide 4 must use the `env.*` pattern consistently.
+`src/lib/env.ts` doesn't expose `ANTHROPIC_SMALL_MODEL`, `ANTHROPIC_MAX_OUTPUT_TOKENS`, or `ENABLE_WEB_SEARCH`. Guide 5 must extend this file.
 
----
+### 8C. Claude Client Is a Stub
 
-## Appendix A: Guide 4 Recommended File Structure
+The orchestration doc assumes `src/lib/claude/client.ts` has a working SDK client. In reality it's a 4-line config object. Guide 5 must build the full client from scratch, installing `@anthropic-ai/sdk`.
 
-```
-src/lib/article-schema/
-  index.ts                    — barrel: exports validate, repair functions + types
-  schema.ts                   — Zod v4 schema for CanonicalArticleDocument + all sub-schemas
-  validate.ts                 — validateCanonicalDocument(doc: unknown) -> ValidationResult
-  repair.ts                   — repairCanonicalDocument(doc: unknown) -> { repaired, changes[] }
+### 8D. Internal Links Table — Limited Data
 
-src/lib/renderer/
-  index.ts                    — barrel: exports renderArticle + sub-utilities
-  renderer.ts                 — renderArticle(input: RendererInput) -> RendererOutput (pure function)
-  components.ts               — HTML template functions per ContentNode type
-  css.ts                      — Embedded BEM stylesheet (bwc- prefix, CSS variables)
-  jsonld.ts                   — buildSchemaJson(doc) -> JSON-LD string
-  cloudinary.ts               — buildCloudinaryUrl(publicId, transforms?) -> URL string
-  compiled-template.ts        — Full embedded Compiled Template (CSS + component patterns)
+The `internal_links` table has only 10 rows (core pages). No article-to-article links exist yet because no articles have been published. Guide 5's Layer 5 link graph builder must handle:
+1. Core page links (from `internal_links` where `linkType = 'to-core-page'`)
+2. Published article links (from `content_map` where `status = 'published'` and `publishedUrl IS NOT NULL`)
+3. Hub-spoke relationships (from `content_map` parent/child relations)
 
-src/app/api/articles/
-  render/route.ts             — POST: RendererInput -> RendererOutput
-  validate/route.ts           — POST: unknown JSON -> validation result
-
-scripts/
-  test-guide-4.ts             — Integration tests
-  fixtures/
-    sample-canonical-doc.json — Minimal valid CanonicalArticleDocument for testing
-```
-
-## Appendix B: Repair Pass Logic Specification
-
-The repair pass (`src/lib/article-schema/repair.ts`) handles common Claude model output issues:
-
-### Repairs to Implement
-1. **Missing optional arrays** — If `faq`, `internalLinks`, `externalLinks`, `captureComponents`, or `dataNosnippetSections` are missing, default to `[]`
-2. **Missing optional fields** — If `heroImage` is missing, default to `null`; if `hubId` is missing, default to `null`
-3. **Duplicate section IDs** — If multiple sections share the same `id`, append `-2`, `-3`, etc.
-4. **Missing content node IDs** — If content nodes lack `id` fields, auto-generate from section ID + index (e.g., `"section-1-node-0"`)
-5. **Malformed link objects** — If InternalLinkRef or ExternalLinkRef are missing required fields, fill defaults or remove the entry
-6. **Schema flags missing** — Default `schema.blogPosting` to `true`, `schema.faqPage` to `faq.length > 0`, `schema.product` to `false`
-7. **Version missing** — Default to `"1.0"`
-8. **headingLevel out of range** — Clamp to 2 or 3
-
-### Repair Function Signature
-```typescript
-export function repairCanonicalDocument(doc: unknown): {
-  repaired: CanonicalArticleDocument;
-  changes: string[];  // Human-readable list of what was repaired
-  valid: boolean;     // Whether doc was valid BEFORE repairs
-}
-```
-
-### Important: Repair Before Validate
-The validate route should offer both:
-1. **Strict validation** — `validateCanonicalDocument(doc)` returns pass/fail with no repair
-2. **Repair + validate** — `repairCanonicalDocument(doc)` applies fixes then validates the result
-
-The render route should auto-repair before rendering (repair is cheap, rendering a broken doc is expensive).
+Currently #2 will return 0 results (no published articles), which is correct.
 
 ---
 
-## Appendix C: FAIL-Level QA Checks from SOP (for Zod Schema Validation)
+## Appendix A: Complete File Inventory for Guide 5
 
-These are deterministic checks extracted from the SOP (§2, §3, §8, §9, §12) that MUST be enforced in `src/lib/article-schema/validate.ts`. Each maps to a specific field in the CanonicalArticleDocument.
+### Files to CREATE:
+```
+src/lib/prompt-assembly/
+  index.ts              ← barrel exports
+  layer-sop.ts          ← Layer 1: Load SOP document
+  layer-style-guide.ts  ← Layer 2a: Load Brand Style Guide
+  layer-template.ts     ← Layer 2b: Compiled Template component reference
+  layer-brief.ts        ← Layer 3: Article Brief from content_map
+  layer-kb-context.ts   ← Layer 4: Onyx KB context
+  layer-link-graph.ts   ← Layer 5: Internal link graph from DB
+  layer-photo-manifest.ts ← Layer 6: Photo manifest
+  assembler.ts          ← Combine all layers into system prompt
 
-### Structure FAIL Checks
-| Check | Field(s) | Rule | Source |
-|---|---|---|---|
-| Single H1 | `title` | Must be present and non-empty (renderer produces exactly one `<h1>` from `title`) | SOP §3 |
-| Heading hierarchy | `sections[].headingLevel` | Only 2 or 3 allowed. H3 must not appear without a preceding H2. No H4-H6. | SOP §3 |
-| Executive summary present | `executiveSummary` | Must be non-empty string | SOP §2 |
-| Executive summary length | `executiveSummary` | 25-40 words | SOP §2 |
-| Meta title length | `metaTitle` | 50-60 characters | SOP §2 |
-| Meta description length | `metaDescription` | 150-160 characters | SOP §2 |
-| H2 count by type | `sections[]` where `headingLevel === 2` | Hub: 5-8, Spoke: 3-5, News: 2-3 | SOP §3 |
+src/lib/orchestration/
+  index.ts              ← barrel exports
+  orchestrator.ts       ← Main generation orchestrator
+  conversation.ts       ← Conversation history manager
+  streaming-parser.ts   ← Parse streaming JSON from Claude
+  post-processing.ts    ← Validation + repair + link check pipeline
 
-### Volume FAIL Checks (computed from rendered content)
-| Check | Computed From | Rule | Source |
-|---|---|---|---|
-| Word count minimum | All text content | Hub >= 2500, Spoke >= 1200, News >= 600 | SOP §3 |
-| Internal link minimum | `internalLinks[]` | Hub >= 8, Spoke >= 5, News >= 3 | SOP §6 |
-| External link minimum | `externalLinks[]` | Hub >= 5, Spoke >= 3, News >= 2 | SOP §7 |
-| Core page links | `internalLinks[].targetCorePage` | At least 3 links to BWC core pages | SOP §6 |
+src/lib/claude/
+  client.ts             ← REPLACE stub with full Anthropic SDK client
+  streaming.ts          ← Streaming response handler
+  tools.ts              ← web_search tool configuration
+  index.ts              ← barrel exports
 
-### Image & Accessibility FAIL Checks
-| Check | Field(s) | Rule | Source |
-|---|---|---|---|
-| Hero image loading | `heroImage` | Renderer must set `loading="eager"` + `fetchpriority="high"` | SOP §12 |
-| All other images | `sections[].content[type=image]` | Renderer must set `loading="lazy"` | SOP §12 |
-| Informative alt text | `ImagePlacement` where `classification !== "decorative"` | `alt` must be 10-25 words, non-empty | SOP §8 |
-| Decorative alt empty | `ImagePlacement` where `classification === "decorative"` | `alt` must be `""` | SOP §8 |
-| Image dimensions | All `ImagePlacement` | `width` and `height` must be present | SOP §12 |
+src/app/api/articles/generate/
+  route.ts              ← POST: streaming generation endpoint
 
-### Schema & Metadata FAIL Checks
-| Check | Field(s) | Rule | Source |
-|---|---|---|---|
-| BlogPosting schema | `schema.blogPosting` | Must be `true` on every article | SOP §9 |
-| FAQPage schema sync | `schema.faqPage`, `faq[]` | `faqPage` must be `true` if and only if `faq.length > 0` | SOP §9 |
-| Author present | `author` | `name` and `credentials` must be non-empty | SOP §5 |
-| Dates present | `publishDate`, `modifiedDate` | Must be valid ISO 8601 dates | SOP §5 |
-| Canonical URL | `canonicalUrl` | Must start with `https://www.bhutanwine.com/` | SOP §2 |
+src/app/api/links/verify/
+  route.ts              ← POST: batch link verification
 
-### Link Quality FAIL Checks (WARN level — surfaced but don't block)
-| Check | Field(s) | Rule | Source |
-|---|---|---|---|
-| No generic anchors | `internalLinks[].anchorText` | Must not be "click here", "read more", "learn more" | SOP §6 |
-| Anchor text length | `internalLinks[].anchorText` | 3-8 words | SOP §6 |
-| Hub links to all spokes | Context-dependent | Hub must link to all published spokes in cluster | SOP §6 |
-| Spoke links to hub | `internalLinks[]` | Must include at least one link to parent hub | SOP §6 |
-| External link distribution | `externalLinks[].sectionId` | Links should span multiple sections, not cluster in one | SOP §7 |
-
----
-
-## Appendix D: Compiled Template Specification (from Brand Style Guide)
-
-The `src/lib/renderer/compiled-template.ts` must embed the following. This is the authoritative specification from the Brand Style Guide (§3-6, §13, §17-18).
-
-### Google Fonts Import (embed in rendered HTML `<head>`)
-```html
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Fraunces:ital,wght@0,400;0,700;1,400&family=Nunito+Sans:wght@300;400;700&family=Trirong&display=swap" rel="stylesheet">
+scripts/test-guide-5.ts ← Integration test
 ```
 
-### Complete CSS (embed in `<style>` block)
-Source: Brand Style Guide §3 (CSS Variables), §6 (Blog Post Typography Mapping), §7 (Layout & Spacing), §13 (Mobile), §14 (Links)
-
-**Required CSS sections:**
-1. `:root` variables (colors + spacing scale from §3 and §7)
-2. `article h1` through `article h4` (§6 — exact font, size, weight, color, margin)
-3. `article p, article li` (§6 — Nunito Sans 16px/1.7 weight 300)
-4. `article ul, article ol` (§6 — margin/padding)
-5. `article blockquote` (§6 — Cormorant Garamond, gold border-left, italic)
-6. `article a` and `article a:hover` (§6, §14 — gold, underline, opacity transition)
-7. `article figure`, `article img`, `article figcaption` (§6)
-8. `article .lead, article .intro` (§6 — Fraunces 21px)
-9. `article .meta, article .eyebrow, article .last-updated` (§6 — Nunito Sans 14px)
-10. `.bwc-key-facts` (§17 — aside with dl/dt/dd, cream background)
-11. `.bwc-pullquote` (blockquote styling — §6)
-12. `.bwc-executive-summary` (bold lead paragraph)
-13. `@media (max-width: 768px)` responsive overrides (§13 — h1:38px, h2:30px, h3:24px)
-14. Layout: max-width 980px, centered
-
-### Component HTML Templates
-Each ContentNode type maps to a component:
-
-| ContentNode.type | HTML Component | Key Classes/Elements |
-|---|---|---|
-| (document root) | `<article class="bwc-article">` | Wrapper |
-| (hero) | `<header class="blog-hero">` | `.eyebrow`, `h1`, `.bwc-executive-summary`, `.meta` + `<time>` |
-| paragraph | `<p>` | Standard body paragraph |
-| image | `<figure class="bwc-figure">` + `<img>` + `<figcaption>` | Informative vs decorative via `alt`/`role` |
-| pullQuote | `<blockquote class="bwc-pullquote">` + `<p>` + `<cite>` | Gold border-left |
-| keyFacts | `<aside class="bwc-key-facts">` + `<h3>` + `<dl>` + `<dt>/<dd>` | Cream background |
-| table | `<table>` + `<thead>/<tbody>` | Standard table with caption |
-| list | `<ul>` or `<ol>` + `<li>` | Based on `ordered` field |
-| callout | `<aside class="bwc-callout bwc-callout--{variant}">` | info/tip/warning variants |
-| (faq) | `<section class="bwc-faq">` + `<h2>` + `<h3>/<p>` pairs | FAQ section |
-| (author bio) | `<footer class="bwc-author-bio">` | Name, credentials, LinkedIn link |
-| (schema) | `<script type="application/ld+json">` | BlogPosting, FAQPage, Product |
-
-### Full HTML Skeleton (renderer must output this top-level structure)
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>[metaTitle]</title>
-  <meta name="description" content="[metaDescription]">
-  <link rel="canonical" href="[canonicalUrl]">
-  <!-- Google Fonts preconnect + stylesheet link -->
-  <style>
-    /* Embedded CSS: :root variables + spacing scale + article element mapping + responsive overrides */
-  </style>
-  <script type="application/ld+json">
-    { "@context": "https://schema.org", ... }
-  </script>
-</head>
-<body>
-  <article class="bwc-article">
-    <header class="blog-hero">
-      <p class="eyebrow">Bhutan Wine Company Journal</p>
-      <h1>[title]</h1>
-      <p class="lead">[executiveSummary]</p>
-      <p class="meta">
-        <time datetime="[ISO date]">[formatted date]</time>
-        <span aria-hidden="true"> · </span>
-        <span>By [author.name], [author.credentials]</span>
-      </p>
-    </header>
-    <!-- hero image figure here (loading="eager" fetchpriority="high") -->
-    <section class="blog-content">
-      <!-- sections iterated here: h2/h3 + ContentNode components -->
-    </section>
-    <!-- FAQ section here (if faq.length > 0) -->
-    <footer class="bwc-author-bio">
-      <!-- author name, credentials, LinkedIn link -->
-    </footer>
-    <footer class="article-footer">
-      <p class="last-updated">Last updated: <time datetime="[ISO date]">[formatted date]</time></p>
-    </footer>
-  </article>
-</body>
-</html>
+### Files to MODIFY:
+```
+src/lib/env.ts          ← Add ANTHROPIC_SMALL_MODEL, ANTHROPIC_MAX_OUTPUT_TOKENS, ENABLE_WEB_SEARCH
+src/types/claude.ts     ← Extend GenerationRequest/Response, add streaming event types
+.env.example            ← Verify all Guide 5 vars are documented
+package.json            ← Add @anthropic-ai/sdk dependency
 ```
 
-### Non-Negotiable Renderer Rules (from Brand Style Guide §2)
-1. Use real HTML for real content — headings, paragraphs, lists, captions as DOM elements
-2. One `<h1>` per page (the article title)
-3. Heading tags for structure only, not styling
-4. No heading level skips
-5. Standard `<a href>` for all links
-6. Standard `<img>` for all article images (no CSS background-image for content)
-7. All images have `width` and `height` attributes
-8. Hero image: `loading="eager"` + `fetchpriority="high"`; all others: `loading="lazy"`
-9. Links styled as gold underline, identifiable without hover
+### Files to READ (not modify):
+```
+docs/BWC Master Content Engine SOP.md                           ← Layer 1 content
+docs/Bhutan Wine Company — Brand Style Guide for HTML Blog Posts (3).md  ← Layer 2a content
+src/lib/renderer/compiled-template.ts                           ← Layer 2b reference
+src/lib/onyx/                                                   ← Layer 4 integration
+src/lib/article-schema/                                         ← Post-generation validation
+src/lib/renderer/                                               ← Post-validation rendering
+prisma/schema.prisma                                            ← Layer 3 & 5 DB queries
+```

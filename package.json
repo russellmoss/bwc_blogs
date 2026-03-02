@@ -14,6 +14,7 @@
     "gen:models": "node scripts/generate-model-inventory.cjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@prisma/client": "^6.19.2",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.3.1",
