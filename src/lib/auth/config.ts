@@ -4,6 +4,17 @@ import { prisma } from "@/lib/db";
 import { retryDatabaseOperation } from "@/lib/db/retry";
 import { verifyPassword } from "./password";
 
+// Auto-detect the correct URL on Vercel deployments
+function getNextAuthUrl(): string | undefined {
+  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL;
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL)
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return undefined;
+}
+
+const isVercel = !!process.env.VERCEL;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -69,4 +80,20 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   secret: process.env.NEXTAUTH_SECRET,
+  // On Vercel, use secure cookies with the correct domain
+  ...(isVercel && {
+    cookies: {
+      sessionToken: {
+        name: `__Secure-next-auth.session-token`,
+        options: {
+          httpOnly: true,
+          sameSite: "lax" as const,
+          path: "/",
+          secure: true,
+        },
+      },
+    },
+  }),
+  // Ensure NextAuth knows the deployment URL
+  ...(getNextAuthUrl() && { url: getNextAuthUrl() }),
 };
