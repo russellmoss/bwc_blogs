@@ -96,9 +96,9 @@ src/
 | `NEXTAUTH_SECRET` | Auth | ✅ | ✅ |
 | `AUTH_URL` | Auth | ✅ | ✅ |
 | `NEXTAUTH_URL` | Auth | ✅ | ✅ |
-| `ADMIN_EMAIL` | Auth | ❌ placeholder | ✅ |
+| `ADMIN_EMAIL` | Auth | ✅ | ✅ |
 | `ADMIN_NAME` | Auth | ✅ | ✅ |
-| `ADMIN_PASSWORD` | Auth | ❌ placeholder | ✅ |
+| `ADMIN_PASSWORD` | Auth | ✅ | ✅ |
 | `ANTHROPIC_API_KEY` | Claude | ✅ | ✅ |
 | `ANTHROPIC_MODEL` | Claude | ✅ | ✅ |
 | `ANTHROPIC_SMALL_MODEL` | Claude | ✅ | ✅ |
