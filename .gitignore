@@ -54,3 +54,9 @@ ehthumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Google OAuth / API secrets
+client_secret_*.json
+
+# SSL certificates
+*.pem
