@@ -10,7 +10,7 @@
     "gen:api-routes": "node scripts/generate-api-inventory.cjs",
     "gen:env": "node scripts/generate-env-inventory.cjs",
     "gen:all": "npm run gen:api-routes && npm run gen:models && npm run gen:env",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "gen:models": "node scripts/generate-model-inventory.cjs"
   },
   "dependencies": {
