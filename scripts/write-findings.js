@@ -1,0 +1,35 @@
+var fs = require("fs");
+var out = [];
+function p(s) { out.push(s === undefined ? "" : s); }
+var T3 = "```";
+var T3ts = "```ts";
+var TK = "`";
+function bt(s) { return TK + s + TK; }
+p("# Pattern Finder Findings -- Guide 2 Reference");
+p("");
+p("Generated: 2026-03-01");
+p("Scope: All Guide 1 implementation patterns for consistent reuse in Guide 2.");
+p("");
+p("---");
+p("");
+p("## 1. API Route Handler Pattern");
+p("");
+p("### Files Analyzed");
+p("- " + bt("src/app/api/health/route.ts"));
+p("- " + bt("src/app/api/auth/[...nextauth]/route.ts"));
+p("- " + bt("src/app/api/users/route.ts"));
+p("- " + bt("src/app/api/users/[id]/route.ts"));
+p("");
+p("### Import Pattern (canonical)");
+p(T3ts);
+p("import { NextRequest, NextResponse } from \"next/server\";");
+p("import { prisma } from \"@/lib/db\";");
+p("import { requireRole } from \"@/lib/auth/session\";");
+p("import { z } from \"zod\";");
+p(T3);
+p("");
+p("- " + bt("NextRequest") + " imported only when handler reads request body or params.");
+p("- " + bt("NextResponse") + " always imported.");
+p("- " + bt("prisma") + " always from " + bt("@/lib/db") + " -- never from " + bt("@prisma/client") + " directly in routes.");
+p("- Auth helpers from " + bt("@/lib/auth/session") + ".");
+p("- Zod as " + bt("z") + " from " + bt("zod") + "; schemas inline in route file, NOT in a separate file.");

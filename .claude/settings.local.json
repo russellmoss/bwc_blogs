@@ -19,7 +19,9 @@
       "Bash(mkdir:*)",
       "Bash(npx next:*)",
       "Bash(wc:*)",
-      "Bash(npx agent-guard:*)"
+      "Bash(npx agent-guard:*)",
+      "Bash(powershell:*)",
+      "Bash(echo:*)"
     ]
   }
 }

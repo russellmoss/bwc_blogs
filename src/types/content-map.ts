@@ -31,4 +31,17 @@ export interface ContentMapEntry {
   qaScore: string | null;
   authorName: string | null;
   source: "engine" | "external";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface InternalLinkEntry {
+  id: number;
+  sourceArticleId: number | null;
+  targetArticleId: number | null;
+  targetCorePage: string | null;
+  anchorText: string | null;
+  linkType: string | null;
+  isActive: boolean;
+  createdAt: Date;
 }
