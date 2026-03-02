@@ -45,7 +45,11 @@ function buildEditMessage(
 ${JSON.stringify(currentDocument, null, 2)}
 \`\`\`
 
-Please modify this document based on my request below. Return the COMPLETE updated CanonicalArticleDocument JSON (not just the changed parts).
+EDIT INSTRUCTIONS:
+- Make ONLY the changes the user requests — preserve all other content exactly as-is
+- Do NOT rewrite sections, paragraphs, or headings that the user did not ask to change
+- Do NOT re-order, rephrase, or "improve" content beyond the specific edit requested
+- Return the COMPLETE CanonicalArticleDocument JSON (the full document with your targeted changes applied)
 
 My request: ${userMessage}`;
 }

@@ -24,6 +24,12 @@ export function runPostProcessing(rawDocument: CanonicalArticleDocument): PostPr
     console.warn(
       `[post-processing] Validation found ${validationResult.errors.length} errors, ${validationResult.warnings.length} warnings`
     );
+    for (const err of validationResult.errors) {
+      console.warn(`  [ERROR] ${err.path}: ${err.message}`);
+    }
+    for (const warn of validationResult.warnings) {
+      console.warn(`  [WARN] ${warn}`);
+    }
   }
 
   // Step 3: Render to HTML (renderer internally calls repair again — safe)

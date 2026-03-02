@@ -20,6 +20,11 @@ IMAGE PLACEMENT:
 - Inline images: loading="lazy", positioned within sections
 - All images require: src (URL), alt (10-25 words for informative, "" for decorative), width, height
 
+AUTHOR:
+- author: { name (string), credentials (string), bio (string), linkedinUrl (string | null) }
+- If user provides a LinkedIn URL, set author.linkedinUrl — the renderer will hyperlink the author name automatically
+- Do NOT embed HTML <a> tags in author.name — use the linkedinUrl field instead
+
 CAPTURE COMPONENTS (ctaType field):
 - "newsletter" | "allocation" | "tour" | "content_upgrade" | "waitlist"
 

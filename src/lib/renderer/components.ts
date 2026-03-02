@@ -156,7 +156,7 @@ export function renderHero(doc: CanonicalArticleDocument): string {
     <p class="meta">
       <time datetime="${doc.publishDate}">${formatDate(doc.publishDate)}</time>
       <span aria-hidden="true"> &middot; </span>
-      <span>By ${escapeHtml(doc.author.name)}${doc.author.credentials ? `, ${escapeHtml(doc.author.credentials)}` : ""}</span>
+      <span>By ${doc.author.linkedinUrl ? `<a href="${escapeHtml(doc.author.linkedinUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(doc.author.name)}</a>` : escapeHtml(doc.author.name)}${doc.author.credentials ? `, ${escapeHtml(doc.author.credentials)}` : ""}</span>
     </p>
   </header>`;
 }
@@ -185,15 +185,16 @@ export function renderFaq(items: FAQItem[]): string {
 
 /** Render author bio footer */
 export function renderAuthorBio(doc: CanonicalArticleDocument): string {
+  const authorName = doc.author.linkedinUrl
+    ? `<a href="${escapeHtml(doc.author.linkedinUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(doc.author.name)}</a>`
+    : escapeHtml(doc.author.name);
+
   let html = `<footer class="bwc-author-bio">
-    <p class="bwc-author-bio__name">${escapeHtml(doc.author.name)}</p>
+    <p class="bwc-author-bio__name">${authorName}</p>
     <p class="bwc-author-bio__credentials">${escapeHtml(doc.author.credentials)}</p>`;
 
   if (doc.author.bio) {
     html += `\n    <p>${escapeHtml(doc.author.bio)}</p>`;
-  }
-  if (doc.author.linkedinUrl) {
-    html += `\n    <p><a href="${escapeHtml(doc.author.linkedinUrl)}" target="_blank" rel="noopener noreferrer">LinkedIn Profile</a></p>`;
   }
 
   html += "\n  </footer>";

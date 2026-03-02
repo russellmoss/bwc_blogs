@@ -17,5 +17,12 @@ See `docs/_generated/prisma-models.md` for auto-generated model inventory.
 ## API Routes
 See `docs/_generated/api-routes.md` for auto-generated route inventory.
 
+## Page Routes
+| Route | File | Description |
+|-------|------|-------------|
+| `/` | `src/app/page.tsx` | Root redirect to dashboard |
+| `/login` | `src/app/(auth)/login/page.tsx` | Login page (NextAuth credentials) |
+| `/dashboard` | `src/app/dashboard/page.tsx` | Main editor dashboard (AppShell, ChatPanel, PreviewPanel) |
+
 ## Environment Variables
 See `docs/_generated/env-vars.md` for auto-generated variable inventory.

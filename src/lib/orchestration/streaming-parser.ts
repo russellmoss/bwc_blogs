@@ -14,63 +14,298 @@ export interface ParseResult {
  * 1. Tries to parse the entire text as JSON
  * 2. Falls back to extracting JSON from markdown code fences
  * 3. Falls back to finding the outermost { ... } block
+ *
+ * After extraction, normalizes the shape if Claude used a `metadata` wrapper.
  */
-export function parseGenerationResponse(rawText: string): ParseResult {
+export function parseGenerationResponse(rawText: string, articleId?: number): ParseResult {
   const trimmed = rawText.trim();
   let conversationReply = "";
 
+  console.log("[streaming-parser] Raw text length:", trimmed.length);
+
+  if (!trimmed) {
+    console.error("[streaming-parser] EMPTY response from Claude");
+    return {
+      document: null,
+      conversationReply: "",
+      rawText,
+      parseError: "Claude returned an empty response",
+    };
+  }
+
+  // Try to extract a JSON object using 3 strategies
+  const extracted = extractJson(trimmed);
+
+  if (!extracted) {
+    console.error("[streaming-parser] No valid JSON object found in response");
+    return {
+      document: null,
+      conversationReply: trimmed,
+      rawText,
+      parseError: `No valid JSON object found in ${trimmed.length} chars of response text.`,
+    };
+  }
+
+  conversationReply = extracted.conversationReply;
+  let obj = extracted.parsed;
+
+  // Normalize: if Claude wrapped fields in a `metadata` object, flatten them up
+  obj = normalizeDocument(obj, articleId);
+
+  if (isCanonicalDoc(obj)) {
+    console.log("[streaming-parser] SUCCESS — document extracted and validated");
+    return { document: obj as CanonicalArticleDocument, conversationReply, rawText, parseError: null };
+  }
+
+  // Still not valid — report what's missing
+  const doc = obj as Record<string, unknown>;
+  const missing: string[] = [];
+  if (typeof doc.title !== "string") missing.push("title");
+  if (typeof doc.articleId !== "number") missing.push("articleId");
+  if (!Array.isArray(doc.sections)) missing.push("sections");
+
+  console.error("[streaming-parser] Document shape check failed. Missing:", missing, "Top-level keys:", Object.keys(doc).slice(0, 15));
+
+  return {
+    document: null,
+    conversationReply: trimmed,
+    rawText,
+    parseError: `JSON extracted but missing required fields: ${missing.join(", ")}. Top-level keys: ${Object.keys(doc).slice(0, 10).join(", ")}`,
+  };
+}
+
+/**
+ * Tries 3 strategies to extract a JSON object from text.
+ */
+function extractJson(text: string): { parsed: Record<string, unknown>; conversationReply: string } | null {
   // Strategy 1: Entire text is JSON
   try {
-    const parsed = JSON.parse(trimmed);
-    if (isCanonicalDoc(parsed)) {
-      return { document: parsed, conversationReply: "", rawText, parseError: null };
+    const parsed = JSON.parse(text);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      console.log("[streaming-parser] Strategy 1: pure JSON, keys:", Object.keys(parsed).slice(0, 10));
+      return { parsed, conversationReply: "" };
     }
   } catch {
-    // Not pure JSON, try other strategies
+    // Not pure JSON
   }
 
   // Strategy 2: Extract from markdown code fence
-  const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (fenceMatch) {
     try {
       const parsed = JSON.parse(fenceMatch[1].trim());
-      if (isCanonicalDoc(parsed)) {
-        // Everything outside the fence is conversation
-        conversationReply = trimmed
-          .replace(/```(?:json)?\s*\n?[\s\S]*?\n?```/, "")
-          .trim();
-        return { document: parsed, conversationReply, rawText, parseError: null };
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const reply = text.replace(/```(?:json)?\s*\n?[\s\S]*?\n?```/, "").trim();
+        console.log("[streaming-parser] Strategy 2: code fence, keys:", Object.keys(parsed).slice(0, 10));
+        return { parsed, conversationReply: reply };
       }
     } catch {
       // fence content wasn't valid JSON
     }
   }
 
-  // Strategy 3: Find the outermost { ... } block
-  const firstBrace = trimmed.indexOf("{");
-  const lastBrace = trimmed.lastIndexOf("}");
+  // Strategy 3: Find outermost { ... } block
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
   if (firstBrace !== -1 && lastBrace > firstBrace) {
-    const jsonCandidate = trimmed.slice(firstBrace, lastBrace + 1);
+    const candidate = text.slice(firstBrace, lastBrace + 1);
     try {
-      const parsed = JSON.parse(jsonCandidate);
-      if (isCanonicalDoc(parsed)) {
-        conversationReply = (
-          trimmed.slice(0, firstBrace) + trimmed.slice(lastBrace + 1)
-        ).trim();
-        return { document: parsed, conversationReply, rawText, parseError: null };
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const reply = (text.slice(0, firstBrace) + text.slice(lastBrace + 1)).trim();
+        console.log("[streaming-parser] Strategy 3: outermost braces, keys:", Object.keys(parsed).slice(0, 10));
+        return { parsed, conversationReply: reply };
       }
-    } catch {
-      // not valid JSON
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.log("[streaming-parser] Strategy 3 JSON parse failed:", msg.slice(0, 200));
+      // Check for truncation
+      const opens = (candidate.match(/{/g) || []).length;
+      const closes = (candidate.match(/}/g) || []).length;
+      if (opens > closes) {
+        console.error("[streaming-parser] JSON appears truncated: { count:", opens, "} count:", closes);
+      }
     }
   }
 
-  // All strategies failed
-  return {
-    document: null,
-    conversationReply: trimmed,
-    rawText,
-    parseError: "Failed to extract CanonicalArticleDocument JSON from Claude's response",
-  };
+  return null;
+}
+
+/**
+ * Normalizes Claude's JSON output into CanonicalArticleDocument shape.
+ *
+ * Claude sometimes wraps title/slug/meta fields in a `metadata` object instead
+ * of placing them at the top level. This flattens that structure.
+ */
+function normalizeDocument(obj: Record<string, unknown>, articleId?: number): Record<string, unknown> {
+  // If the doc already has `title` and `articleId` at top level, it's fine
+  if (typeof obj.title === "string" && typeof obj.articleId === "number") {
+    return obj;
+  }
+
+  console.log("[streaming-parser] Normalizing document shape...");
+  const result = { ...obj };
+
+  // Flatten `article` wrapper FIRST — Claude sometimes nests the entire document under an `article` key
+  // This must run before metadata flattening so nested metadata keys become top-level
+  // Also handle `content`, `document`, `blogPost` wrappers
+  const wrapperKeys = ["article", "content", "document", "blogPost", "post"];
+  for (const wrapperKey of wrapperKeys) {
+    if (typeof result[wrapperKey] === "object" && result[wrapperKey] !== null && !Array.isArray(result[wrapperKey])) {
+      const inner = result[wrapperKey] as Record<string, unknown>;
+      // Only flatten if the wrapper contains content-like keys (title, sections, slug, metadata, etc.)
+      if (inner.title || inner.sections || inner.slug || inner.metadata) {
+        console.log(`[streaming-parser] Flattening '${wrapperKey}' wrapper, keys:`, Object.keys(inner));
+        for (const [key, value] of Object.entries(inner)) {
+          if (!(key in result) || key === wrapperKey) {
+            result[key] = value;
+          }
+        }
+        delete result[wrapperKey];
+      }
+    }
+  }
+
+  // Flatten any metadata-like wrapper that contains `title`
+  // Claude uses: `metadata`, `articleMetadata`, `seoMetadata`, etc.
+  // Runs AFTER wrapper flattening so { article: { metadata: { title } } } is handled
+  const metadataKeys = Object.keys(result).filter((k) => {
+    if (!k.toLowerCase().includes("metadata")) return false;
+    const val = result[k];
+    return typeof val === "object" && val !== null && !Array.isArray(val);
+  });
+
+  for (const metaKey of metadataKeys) {
+    const meta = result[metaKey] as Record<string, unknown>;
+    console.log(`[streaming-parser] Flattening '${metaKey}' keys:`, Object.keys(meta));
+    for (const [key, value] of Object.entries(meta)) {
+      // Don't override existing top-level keys (except the metadata key itself)
+      if (!(key in result) || key === metaKey) {
+        result[key] = value;
+      }
+    }
+    delete result[metaKey];
+  }
+
+  // Map alternate field names Claude commonly uses.
+  // Each entry: [canonical name, ...alternate names Claude might use]
+  const fieldAliases: [string, ...string[]][] = [
+    ["title", "blogTitle", "articleTitle", "postTitle"],
+    ["articleId", "article_id"],
+    ["articleType", "article_type", "type"],
+    ["metaTitle", "meta_title"],
+    ["metaDescription", "meta_description"],
+    ["canonicalUrl", "canonical_url", "url"],
+    ["publishDate", "publish_date", "datePublished", "date_published", "publicationDate"],
+    ["modifiedDate", "modified_date", "dateModified", "date_modified", "lastModified"],
+    ["heroImage", "hero_image", "hero"],
+    ["executiveSummary", "executive_summary", "summary", "excerpt"],
+    ["internalLinks", "internal_links"],
+    ["externalLinks", "external_links"],
+    ["ctaType", "cta_type"],
+    ["faq", "faqItems", "faq_items", "faqs", "faqSection"],
+    ["captureComponents", "capture_components"],
+    ["dataNosnippetSections", "data_nosnippet_sections"],
+    ["hubId", "hub_id", "parentHubId", "parent_hub_id"],
+  ];
+
+  for (const [canonical, ...alternates] of fieldAliases) {
+    if (result[canonical] === undefined || result[canonical] === null) {
+      for (const alt of alternates) {
+        if (result[alt] !== undefined && result[alt] !== null) {
+          result[canonical] = result[alt];
+          delete result[alt];
+          break;
+        }
+      }
+    }
+  }
+
+  // Handle `schemaFlags` -> `schema`
+  if (!result.schema && result.schemaFlags) {
+    result.schema = result.schemaFlags;
+    delete result.schemaFlags;
+  }
+
+  // If articleId is still missing, inject from request or try to parse
+  if (typeof result.articleId !== "number") {
+    if (typeof result.articleId === "string") {
+      const parsed = parseInt(result.articleId, 10);
+      if (!isNaN(parsed)) result.articleId = parsed;
+    }
+    if (typeof result.articleId !== "number" && typeof articleId === "number") {
+      console.log("[streaming-parser] Injecting articleId from request:", articleId);
+      result.articleId = articleId;
+    }
+  }
+
+  // Handle `captureComponent` (singular) -> map to ctaType and captureComponents
+  if (typeof result.captureComponent === "object" && result.captureComponent !== null) {
+    const cap = result.captureComponent as Record<string, unknown>;
+    if (!result.ctaType && cap.ctaType) {
+      result.ctaType = cap.ctaType;
+    }
+    delete result.captureComponent;
+  }
+
+  // Delete extra keys not in the schema (would cause Zod strict parse to fail)
+  delete result.seo;
+  delete result.seoMetadata;
+
+  // === Fill defaults for required fields Claude commonly omits ===
+  if (!result.version) result.version = "1.0";
+  if (!result.hubId && result.hubId !== 0) result.hubId = null;
+  if (!result.canonicalUrl) {
+    const slug = result.slug as string | undefined;
+    result.canonicalUrl = slug ? `https://www.bhutanwine.com/blog/${slug}` : "https://www.bhutanwine.com/blog";
+  }
+  if (!result.publishDate) result.publishDate = new Date().toISOString();
+  if (!result.modifiedDate) result.modifiedDate = new Date().toISOString();
+  if (!result.ctaType) result.ctaType = "newsletter";
+
+  // Ensure required arrays exist
+  if (!Array.isArray(result.faq)) result.faq = [];
+  if (!Array.isArray(result.dataNosnippetSections)) result.dataNosnippetSections = [];
+  if (!Array.isArray(result.captureComponents)) {
+    result.captureComponents = result.ctaType ? [result.ctaType] : [];
+  }
+  if (!Array.isArray(result.internalLinks)) result.internalLinks = [];
+  if (!Array.isArray(result.externalLinks)) result.externalLinks = [];
+
+  // Ensure schema flags exist
+  if (!result.schema || typeof result.schema !== "object") {
+    result.schema = {
+      blogPosting: true,
+      faqPage: Array.isArray(result.faq) && (result.faq as unknown[]).length > 0,
+      product: false,
+    };
+  }
+
+  // Ensure heroImage is null if missing (not undefined)
+  if (!result.heroImage) result.heroImage = null;
+
+  // Clean HTML from author fields — Claude sometimes embeds <a> tags in author.name
+  if (typeof result.author === "object" && result.author !== null) {
+    const author = result.author as Record<string, unknown>;
+    if (typeof author.name === "string") {
+      const linkMatch = (author.name as string).match(/<a\s[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/i);
+      if (linkMatch) {
+        const [, href, text] = linkMatch;
+        if (!author.linkedinUrl && href) {
+          author.linkedinUrl = href;
+          console.log("[streaming-parser] Extracted linkedinUrl from author.name:", href);
+        }
+        author.name = text.trim() || author.name;
+      }
+      // Strip any remaining HTML tags
+      author.name = (author.name as string).replace(/<[^>]+>/g, "").trim();
+    }
+  }
+
+  console.log("[streaming-parser] After normalization, top-level keys:", Object.keys(result).slice(0, 20));
+  console.log("[streaming-parser] title:", typeof result.title, "articleId:", typeof result.articleId, "sections:", Array.isArray(result.sections));
+
+  return result;
 }
 
 function isCanonicalDoc(obj: unknown): obj is CanonicalArticleDocument {

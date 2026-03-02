@@ -1,549 +1,510 @@
-# Exploration Results — Guide 5: Orchestration Layer + Claude API
+# Exploration Results — Guide 6: Split-Pane UI + Chat Mode
 
-**Generated:** 2026-03-02
-**Target:** Guide 5 — the core generation engine
-**Previous guides completed:** 1, 2, 3, 4
+**Date:** 2026-03-02
+**Prepared by:** Build-guide exploration team (code-inspector, integration-verifier, pattern-finder)
+**Source files:** `code-inspector-findings.md`, `integration-verifier-findings.md`, `pattern-finder-findings.md`
 
 ---
 
 ## 1. Current Build State
 
-### Guides Completed
-| Guide | Title | Status |
-|---|---|---|
-| 1 | Foundation — DB, Auth, Types, agent-guard | ✅ Complete |
-| 2 | Content Map — CSV Import, CRUD API, Seed Data | ✅ Complete |
-| 3 | Onyx RAG Integration | ✅ Complete |
-| 4 | Canonical Article Schema + Article Renderer | ✅ Complete |
+### Guides Complete: 1 through 5 (Foundation → Orchestration Layer)
 
-### Inventory Summary
 | Category | Count | Details |
 |---|---|---|
-| Prisma models | 8 | User, ContentMap, ArticleDocument, ArticleHtml, InternalLink, Photo, ArticlePhoto, Lead, LeadEvent |
-| API routes | 11 | health, auth, users (2), content-map (3), onyx (2), articles (2) |
-| TypeScript type files | 10 | auth, article, renderer, qa, onyx, claude, photo, content-map, api, next-auth.d.ts |
-| Library modules | 6 dirs | db, auth, env, content-map, onyx, article-schema, renderer |
-| UI components | 0 | No components yet (Guide 6 scope) |
-| Database rows | content_map: 39 (8 hubs, 31 spokes, all parentHubId wired), internal_links: 10 (core pages), users: 1, article_documents: 0, article_html: 0 |
+| Prisma models | 9 | users, content_map, article_documents, article_html, internal_links, photos, article_photos, leads, lead_events |
+| API routes | 15 | health, auth, users (2), content-map (3), onyx (2), articles (3: generate/render/validate), links/verify |
+| Type files | 11 | article, api, auth, claude, content-map, renderer, qa, photo, onyx, next-auth.d.ts, index |
+| Lib modules | 9 dirs | auth, db, orchestration, renderer, claude, prompt-assembly, article-schema, onyx, content-map |
+| Components | 0 | `src/components/` does not exist |
+| DB rows | 50 | 1 user, 39 content_map, 10 internal_links; article_documents and article_html empty |
 
-### Build Health
-- `npm run build`: ✅ **Passes with zero errors** — all 13 routes + pages compile
-- All 11 API routes render as dynamic (ƒ) in the build output
-- Static pages: `/`, `/_not-found`, `/login`
+### Integration Health: All Services Connected and Verified
+
+| Service | Status | Response Time |
+|---|---|---|
+| Neon Postgres | PASS | ~800ms (tsx startup overhead) |
+| Onyx RAG | PASS | 95ms health / 179ms search |
+| Claude API | PASS | ~1.5s, SSE streaming + web_search confirmed |
+| Cloudinary | PASS | 244ms API / 160ms CDN |
+| Vercel (deployed) | PASS | 197ms, all env flags true |
+| npm run build | PASS | 4.6s, 15 routes, zero errors |
+| TypeScript (tsc --noEmit) | PASS | Zero errors |
+| ESLint | PASS | 0 errors (1 warning in untracked scratch file) |
 
 ---
 
 ## 2. Next Guide Target
 
-### Guide 5: Orchestration Layer + Claude API — ⚡ CRITICAL
+### Guide 6: Split-Pane UI + Chat Mode — CRITICAL
 
-**From orchestration doc §7 (line 770):**
+**From orchestration doc §7:**
+> What it builds: The primary user interface — the split-pane layout with conversation on the left and live rendered preview on the right.
+> Why it's critical: This is the product. Everything built in Guides 1–5 is invisible backend infrastructure. Guide 6 is where the user first sees the system work.
 
-> The core generation engine — the 7-layer system prompt assembly, Claude API streaming calls, structured output parsing, web search tool integration, and post-generation validation.
+**Milestone:** M3 — "Product is real." Open the app, generate an article, see it render live in the preview.
 
-**Depends on:** Guides 1, 2, 3, 4 (all complete)
+**Architecture doc sections to reference:**
+- §3C View 1: Chat Interface + Live Preview (lines 576–769) — complete UI spec with ASCII mockups
+- §3C Three Editing Modes (lines 634–742) — mode switching, toolbar layout
+- §8 Phase 2 (lines 2675–2700) — deliverable description
 
-**Files to Create (from §5E):**
-```
-src/lib/prompt-assembly/        ← 7-layer system prompt builders
-src/lib/orchestration/          ← Generation orchestrator, conversation manager, streaming parser
-src/lib/claude/                 ← Full Anthropic SDK client (replaces current stub)
-src/app/api/articles/generate/  ← POST: streaming generation endpoint
-  route.ts
-src/app/api/links/verify/       ← POST: batch link verification
-  route.ts
-scripts/test-guide-5.ts         ← Integration test
-```
+### File Ownership (orchestration doc §5E)
 
-**None of these directories exist yet** — confirmed via filesystem check.
+Guide 6 owns:
+- `src/app/(dashboard)/page.tsx` — main app shell (replace placeholder)
+- `src/app/(dashboard)/layout.tsx` — authenticated layout (**must create**)
+- `src/components/chat/` — ChatPanel, MessageList, MessageInput, StreamingMessage
+- `src/components/preview/` — PreviewPanel, PreviewIframe, PreviewToolbar, HtmlSourceView
+- `src/components/layout/` — SplitPane, AppShell, ArticleSelector
 
-**Architecture doc references:**
-- §3D: The Orchestration Layer (line 989) — full orchestration flow
-- §3E: Generation Output (line 1097) — Canonical Article Document lifecycle
-- §3J: Web Search Integration (line 1870) — web_search tool config
-- 7-Layer System Prompt diagram (line 1000-1070)
+### What Guide 6 Produces
+- 12 new files (1 layout + 11 components)
+- Client-side state management (Zustand store)
+- SSE stream consumer for `/api/articles/generate`
+- Iframe-based preview with isolated BWC brand CSS
+- Article selector populated from content map API
+- Streaming message display in chat panel
 
 ---
 
 ## 3. Dependencies Satisfied
 
-### 3A. TypeScript Types — All Present ✅
+### Shared Contracts — All Present
 
-**`src/types/claude.ts`** — Already defines:
-```typescript
-interface ConversationMessage {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-}
+| Contract | Status | Location | Fields |
+|---|---|---|---|
+| `CanonicalArticleDocument` | EXISTS | `src/types/article.ts` | 22 fields fully defined |
+| `GenerateArticleRequest` | EXISTS | `src/types/claude.ts` | articleId, userMessage, conversationHistory, currentDocument, photoManifest |
+| `GenerateArticleResponse` | EXISTS | `src/types/claude.ts` | document, html, validationResult, conversationReply, tokensUsed, webSearchResults |
+| `ConversationMessage` | EXISTS | `src/types/claude.ts` | role (user\|assistant), content, timestamp |
+| `StreamEvent` / `StreamEventType` | EXISTS | `src/types/claude.ts` | 7 event types: status, text_delta, web_search, document, validation, complete, error |
+| `ContentMapEntry` | EXISTS | `src/types/content-map.ts` | 25 fields (id, title, slug, articleType, status, etc.) |
+| `RendererInput` / `RendererOutput` | EXISTS | `src/types/renderer.ts` | document + htmlOverrides + templateVersion → html + metadata + wordCount |
+| `ValidationResult` | EXISTS | `src/types/api.ts` | valid, errors[], warnings[] |
+| `ErrorCode` | EXISTS | `src/types/api.ts` | 11 typed error codes |
 
-interface PromptLayer {
-  name: string;
-  content: string;
-  tokenEstimate: number;
-}
+### Library Modules — All Present
 
-interface GenerationRequest {
-  articleId: number;
-  userMessage: string;
-  conversationHistory: ConversationMessage[];
-  currentDocument: CanonicalArticleDocument | null;
-}
+| Module | Status | Entry Point | Key Export |
+|---|---|---|---|
+| Orchestration | EXISTS | `src/lib/orchestration/orchestrator.ts` | `generateArticle(request, onEvent)` — 5-step pipeline |
+| Renderer | EXISTS | `src/lib/renderer/renderer.ts` | `renderArticle(input): RendererOutput` — pure sync function |
+| Compiled Template | EXISTS | `src/lib/renderer/compiled-template.ts` | `STYLE_BLOCK`, `GOOGLE_FONTS_HTML`, `TEMPLATE_VERSION` ("2026.1") |
+| Claude Client | EXISTS | `src/lib/claude/streaming.ts` | `streamGeneration()` |
+| Auth Session | EXISTS | `src/lib/auth/session.ts` | `getSession()`, `getCurrentUser()`, `requireRole()` |
+| Auth Config | EXISTS | `src/lib/auth/config.ts` | NextAuth v4 config |
+| Article Schema | EXISTS | `src/lib/article-schema/` | `validateCanonicalDocument()`, `repairCanonicalDocument()` |
 
-interface GenerationResponse {
-  document: CanonicalArticleDocument;
-  conversationReply: string;
-  tokensUsed: { input: number; output: number; };
-  webSearchResults: WebSearchResult[];
-}
+### API Routes — All Present
 
-interface WebSearchResult {
-  url: string;
-  title: string;
-  snippet: string;
-}
-```
+| Route | Method | Auth | Response Format |
+|---|---|---|---|
+| `/api/articles/generate` | POST (SSE) | admin, editor | text/event-stream with 7 event types |
+| `/api/articles/render` | POST | admin, editor | `{ success, data: { html, metadata } }` |
+| `/api/articles/validate` | POST | admin, editor | `{ success, data: ValidationResult }` |
+| `/api/content-map` | GET | admin, editor, viewer | `{ success, data: ContentMapEntry[] }` |
+| `/api/content-map/[id]` | GET | admin, editor, viewer | `{ success, data: ContentMapEntry }` |
+| `/api/auth/[...nextauth]` | GET, POST | public | NextAuth v4 handler |
 
-**`src/types/api.ts`** — Provides:
-- `ApiSuccess<T>`, `ApiError`, `ApiResponse<T>` response wrappers
-- `ErrorCode` union (includes `GENERATION_FAILED`, `ONYX_UNAVAILABLE`, `LINK_VERIFICATION_FAILED`)
-- `ValidationResult` with `valid`, `errors[]`, `warnings[]`
+### Database — Seeded and Ready
 
-**`src/types/article.ts`** — Complete `CanonicalArticleDocument` with all sub-types:
-- `ArticleSection`, all 7 `ContentNode` variants, `ImagePlacement`, `InternalLinkRef`, `ExternalLinkRef`, `FAQItem`, `SchemaFlags`, `AuthorInfo`, `CaptureType`, `TrustTier`
-
-**`src/types/onyx.ts`** — `OnyxSearchResult`, `OnyxContext`, `OnyxHealthStatus`
-
-**`src/types/renderer.ts`** — `RendererInput`, `RendererOutput`, `HtmlOverride`
-
-**`src/types/content-map.ts`** — `ContentMapEntry`, `InternalLinkEntry`, `ArticleType`, `ArticleStatus`
-
-**`src/types/photo.ts`** — `Photo`, `PhotoManifest`, `CloudinaryTransform`
-
-### 3B. Library Modules — All Dependencies Present ✅
-
-**Onyx client (`src/lib/onyx/`)** — Guide 5 Layer 4 needs:
-- `searchOnyxMulti(queries, filters)` → parallel multi-query with graceful fallback
-- `buildSearchQueries(brief: ArticleBrief)` → generates 1-5 Onyx queries from article metadata
-- `assembleOnyxContext(contexts: OnyxContext[])` → formats results into prompt-ready string (8000 char cap, dedup, score-ranked)
-- All exported from `src/lib/onyx/index.ts`
-
-**Article schema (`src/lib/article-schema/`)** — Guide 5 post-generation pipeline needs:
-- `validateCanonicalDocument(doc: unknown)` → Zod + SOP checks → `ValidationResult`
-- `repairCanonicalDocument(doc: unknown)` → auto-fix missing fields, dedup IDs, clamp heading levels → `{ repaired, changes, valid }`
-- `CanonicalArticleDocumentSchema` → Zod schema for `safeParse`
-- All exported from `src/lib/article-schema/index.ts`
-
-**Renderer (`src/lib/renderer/`)** — Guide 5 calls after validation:
-- `renderArticle(input: RendererInput)` → `RendererOutput` (pure function, no DB/API calls)
-- Renderer internally calls `repairCanonicalDocument` before rendering
-- Also exports: `buildCloudinaryUrl`, `buildSchemaJson`, `BWC_STYLESHEET`, `GOOGLE_FONTS_HTML`, `STYLE_BLOCK`, `TEMPLATE_VERSION`
-
-**Database (`src/lib/db/`)** — Guide 5 needs for Layers 3 and 5:
-- `prisma` singleton from `src/lib/db/index.ts`
-- `retryDatabaseOperation()` from `src/lib/db/retry.ts`
-- Prisma models: `contentMap`, `internalLink` for article brief + link graph queries
-
-**Auth (`src/lib/auth/session.ts`)** — Guide 5 routes need:
-- `requireRole("admin", "editor")` for POST endpoints
-
-### 3C. Database Tables — All Present ✅
-
-**`content_map`** — 39 rows (8 hubs + 31 spokes, 0 news), with `parentHubId` FK relationships verified correct
-- Hub breakdown: Complete Guide to Bhutan Wine (6 spokes), Emerging Wine Regions (4), High-Altitude Viticulture (3), Sustainable Winemaking (4), Luxury Travel in Bhutan (5), Story of Wine in Bhutan (4), Wine Tourism Beyond Europe (2), Bhutan Exclusive Travel (3)
-- All entries have status `"planned"`, slug populated
-- Fields used by Guide 5 Layer 3 (Article Brief): `title`, `articleType`, `hubName`, `mainEntity`, `supportingEntities`, `targetKeywords`, `contentNotes`, `parentHubId`, `slug`, `publishedUrl`, `status`
-
-**`internal_links`** — 10 rows (all `linkType = 'to-core-page'`)
-- Core BWC pages: grapes-vineyards, our-wine, first-release, visit-us, about-us, in-the-news, gallery, inquiry, contact-us, 2023-first-barrel
-- Guide 5 Layer 5 needs these + any published article URLs from content_map
-
-**`article_documents`** — 0 rows (empty, will be written by Guide 11)
-
-**`article_html`** — 0 rows (empty, will be written by Guide 11)
-
-### 3D. Environment Variables ✅
-
-All Guide 5 env vars present in `.env.example`:
-- `ANTHROPIC_API_KEY=sk-ant-...`
-- `ANTHROPIC_MODEL=claude-sonnet-4-5-20250929`
-- `ANTHROPIC_SMALL_MODEL=claude-sonnet-4-5-20250929`
-- `ANTHROPIC_MAX_OUTPUT_TOKENS=16384`
-- `ENABLE_WEB_SEARCH=true`
-- Onyx vars: `ONYX_BASE_URL`, `ONYX_API_URL`, `ONYX_API_KEY`, `ONYX_INDEX_NAME`, `ONYX_SEARCH_TIMEOUT_MS`
-
-### 3E. Static Prompt Documents ✅
-
-Layer 1 and 2a source documents exist:
-- `docs/BWC Master Content Engine SOP.md` — 48,402 bytes (Layer 1)
-- `docs/Bhutan Wine Company — Brand Style Guide for HTML Blog Posts (3).md` — 29,486 bytes (Layer 2a)
-- Compiled Template reference available via `src/lib/renderer/compiled-template.ts` (Layer 2b)
+| Table | Rows | Guide 6 Usage |
+|---|---|---|
+| users | 1 | Auth session verification |
+| content_map | 39 | ArticleSelector dropdown (8 hubs + 31 spokes) |
+| internal_links | 10 | Not directly queried by Guide 6 UI |
+| article_documents | 0 | Not used in Guide 6 (persistence is Guide 11) |
+| article_html | 0 | Not used in Guide 6 |
 
 ---
 
-## 4. Dependencies Missing or Need Extending
+## 4. Dependencies Missing or Mismatched
 
-### 4A. Types That Need Extension
+### 4A. NPM Packages — Must Install Before Coding
 
-**`src/types/claude.ts`** — Current types are close but need additions for:
-
-1. **`GenerateArticleRequest` vs `GenerationRequest`**: The orchestration doc §5B calls it `GenerateArticleRequest` with `photoManifest: PhotoManifest | null` field. The current `GenerationRequest` is missing `photoManifest`. Guide 5 should extend or rename.
-
-2. **Streaming types**: No streaming-specific types exist yet. Guide 5 needs:
-   - `StreamingGenerationEvent` — discriminated union for SSE events (e.g., `{type: "chunk", data: ...}`, `{type: "section_complete", ...}`, `{type: "done", document: ...}`, `{type: "error", ...}`)
-   - Or a simpler approach that streams the JSON chunks directly
-
-3. **`GenerationResponse`** — Current type includes `html: string` in the orchestration doc's `GenerateArticleResponse` (§5B line 369-373) but the actual `GenerationResponse` in `claude.ts` does NOT include `html`. The orchestration doc shows:
-   ```typescript
-   interface GenerateArticleResponse {
-     document: CanonicalArticleDocument;
-     html: string;
-     validationResult: ValidationResult;
-     conversationReply: string;
-   }
-   ```
-   Current `GenerationResponse` has `tokensUsed` and `webSearchResults` instead.
-
-   **Decision needed:** Should the API return `html` (run renderer server-side) or let the client call `/api/articles/render` separately? The architecture doc suggests the orchestration layer renders server-side.
-
-### 4B. Modules That Don't Exist Yet
-
-All Guide 5 directories are **completely absent**:
-- `src/lib/prompt-assembly/` — needs: layer builders for all 7 layers, main assembler
-- `src/lib/orchestration/` — needs: orchestrator, conversation manager, streaming JSON parser
-- `src/lib/claude/` — needs: full Anthropic SDK client replacing the 4-line stub
-- `src/app/api/articles/generate/route.ts` — needs: POST streaming endpoint
-- `src/app/api/links/verify/route.ts` — needs: POST batch link verification
-
-### 4C. The Claude Client Stub
-
-**Current state** (`src/lib/claude/client.ts`):
-```typescript
-export const claudeConfig = {
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-  model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929',
-};
+```bash
+npm install react-resizable-panels lucide-react zustand
 ```
 
-This is a **4-line config object**. Guide 5 must replace it with a full Anthropic SDK integration:
-- `@anthropic-ai/sdk` package installation
-- Streaming message creation
-- `web_search` tool configuration
-- Structured JSON output parsing
-- Token usage tracking
-- Error handling with retries
+| Package | Purpose | Notes |
+|---|---|---|
+| `react-resizable-panels` | Split-pane resize functionality | Architecture doc specifies this library |
+| `lucide-react` | Icon library (Send, Copy, Eye, Code, Undo, Check, etc.) | Standard React icon set |
+| `zustand` | Client-side state management | Lightweight, TypeScript-native; Guide 6 sets the state management precedent |
 
-### 4D. Missing `env.ts` Entries
+### 4B. Missing Files — All Must Be Created
 
-`src/lib/env.ts` does NOT expose:
-- `ANTHROPIC_SMALL_MODEL`
-- `ANTHROPIC_MAX_OUTPUT_TOKENS`
-- `ENABLE_WEB_SEARCH`
+| File | Purpose |
+|---|---|
+| `src/app/(dashboard)/layout.tsx` | **CRITICAL** — authenticated layout with SessionProvider |
+| `src/components/layout/AppShell.tsx` | Header bar with logo, title, article selector |
+| `src/components/layout/SplitPane.tsx` | react-resizable-panels wrapper |
+| `src/components/layout/ArticleSelector.tsx` | Dropdown populated from GET /api/content-map |
+| `src/components/chat/ChatPanel.tsx` | Left pane — SSE consumer, generation state owner |
+| `src/components/chat/MessageList.tsx` | Scrollable message history with auto-scroll |
+| `src/components/chat/MessageInput.tsx` | Textarea + send button |
+| `src/components/chat/StreamingMessage.tsx` | Real-time streaming text with typing indicator |
+| `src/components/preview/PreviewPanel.tsx` | Right pane container |
+| `src/components/preview/PreviewIframe.tsx` | `<iframe srcDoc={html}>` with BWC brand CSS isolation |
+| `src/components/preview/PreviewToolbar.tsx` | Mode toggles, Copy HTML, viewport toggle |
+| `src/components/preview/HtmlSourceView.tsx` | Raw HTML source display |
 
-Guide 5 needs to extend `env.ts` to include these.
+### 4C. Missing Type Definitions
+
+Guide 6 should create `src/types/ui.ts`:
+
+```typescript
+export type PreviewMode = 'preview' | 'html';
+export type ViewportMode = 'desktop' | 'mobile';
+export type EditingMode = 'chat' | 'canvas' | 'html';
+
+export interface ArticleEditorState {
+  // Article selection
+  selectedArticleId: number | null;
+  selectedArticle: ContentMapEntry | null;
+
+  // Generation state
+  isGenerating: boolean;
+  streamingText: string;
+  statusMessage: string;
+
+  // Document state
+  currentDocument: CanonicalArticleDocument | null;
+  currentHtml: string;
+  validationResult: ValidationResult | null;
+
+  // Conversation
+  conversationHistory: ConversationMessage[];
+
+  // UI state
+  previewMode: PreviewMode;
+  viewportMode: ViewportMode;
+  editingMode: EditingMode;
+}
+```
+
+### 4D. Critical Gap: Missing SessionProvider
+
+`src/app/layout.tsx` (root layout) has **no SessionProvider** from `next-auth/react`. Client components calling `useSession()` will fail silently. Guide 6 MUST wrap the dashboard layout in SessionProvider.
+
+### 4E. Critical Gap: Middleware Not Active
+
+`src/proxy.ts` was renamed from `src/middleware.ts` (commit `45be677: chore: rename middleware to proxy and stabilize build`). Next.js only recognizes `src/middleware.ts` or root `middleware.ts` — `src/proxy.ts` is **not active as middleware**.
+
+**Action:** Guide 6's `(dashboard)/layout.tsx` MUST include server-side auth check (`getCurrentUser()` + redirect to `/login`) as the primary auth guard. Do not rely on middleware.
+
+### 4F. Date Field Mismatch in ContentMapEntry
+
+TypeScript types `scheduledDate` and `publishedDate` are typed as `Date | null`, but the API serializes them as ISO strings. The ArticleSelector component must treat these as `string | null`.
+
+### 4G. Template Version Drift
+
+The render API's Zod schema defaults `templateVersion` to `"1.0"`, but the actual constant is `TEMPLATE_VERSION = "2026.1"`. Guide 6 must **always import and pass `TEMPLATE_VERSION` explicitly** from `@/lib/renderer`.
 
 ---
 
 ## 5. Established Patterns to Follow
 
-### 5A. API Route Handler Pattern
+### 5A. API Route Handler Pattern (Consistency: HIGH)
 
-**Canonical example** — `src/app/api/onyx/search/route.ts`:
+Template from `src/app/api/content-map/route.ts`:
+
 ```typescript
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/session";
-import { searchOnyx } from "@/lib/onyx";
 import { z } from "zod";
 
-const SearchRequestSchema = z.object({
-  query: z.string().min(1).max(500),
-  filters: z.object({ sourceType: z.array(z.string()).optional() }).optional(),
-});
+const RequestSchema = z.object({ /* fields */ });
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole("admin", "editor");
-    const body = await request.json();
-    const parsed = SearchRequestSchema.safeParse(body);
+    await requireRole("admin", "editor");        // 1. Auth FIRST
+    const body = await request.json();            // 2. Parse body
+    const parsed = RequestSchema.safeParse(body); // 3. safeParse (never .parse)
+
     if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid input", details: parsed.error.flatten() } },
+        { success: false, error: { code: "VALIDATION_ERROR",
+          message: "Invalid input", details: parsed.error.flatten() } },
         { status: 400 }
       );
     }
-    const result = await searchOnyx(parsed.data.query, ...);
+
+    // 4. Business logic
     return NextResponse.json({ success: true, data: result });
+
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    // Error code matching chain:
-    if (message === "AUTH_REQUIRED") → 401
-    if (message === "AUTH_FORBIDDEN") → 403
-    if (message === "ONYX_UNAVAILABLE") → 503
-    // fallback:
+    if (message === "AUTH_REQUIRED") {
+      return NextResponse.json(
+        { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
+        { status: 401 });
+    }
+    if (message === "AUTH_FORBIDDEN") {
+      return NextResponse.json(
+        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
+        { status: 403 });
+    }
     return NextResponse.json(
       { success: false, error: { code: "INTERNAL_ERROR", message } },
-      { status: 500 }
-    );
+      { status: 500 });
   }
 }
 ```
 
-**Pattern rules:**
-1. Imports: `NextRequest`, `NextResponse`, `requireRole`, service module, `z`
-2. Zod schema defined at module level (not inline)
-3. Auth check first: `await requireRole("admin", "editor")`
-4. Parse body → `safeParse` → return 400 on failure
-5. Call service → return `{ success: true, data }`
-6. Catch block: string-match `error.message` against known error codes
-7. Response format: `{ success: true/false, data/error: { code, message } }`
+### 5B. SSE Streaming Pattern (CRITICAL — Guide 6 must consume this)
 
-### 5B. Error Handling Pattern
+**Server side** (`src/app/api/articles/generate/route.ts`):
+- Uses `new Response(ReadableStream, headers)` — NOT `NextResponse`
+- Headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`, `X-Accel-Buffering: no`
+- Wire format: `event: {type}\ndata: {JSON}\n\n`
+- Pre-stream auth failures return JSON (not SSE) — client must check `response.ok` before reading stream
 
-Errors are thrown as plain `Error` objects with the error code as the message:
+**SSE Event Sequence (11 events in order):**
+1. `status` — `{ message: "Assembling system prompt..." }`
+2. `status` — `{ message: "System prompt assembled (N layers, ~N tokens)" }`
+3. `status` — `{ message: "Calling Claude API..." }`
+4. `text_delta` — `{ text: "partial text" }` (MANY events, real-time Claude output)
+5. `web_search` — `{ query: "search query" }` (0 or more if ENABLE_WEB_SEARCH=true)
+6. `status` — `{ message: "Claude response complete (N input, N output tokens)" }`
+7. `status` — `{ message: "Parsing response..." }`
+8. `document` — full `CanonicalArticleDocument` (parsed, before repair/validation)
+9. `status` — `{ message: "Running validation and rendering..." }`
+10. `validation` — `{ valid: boolean, errors: [...], warnings: [...] }`
+11. `complete` — full `GenerateArticleResponse` `{ document, html, validationResult, conversationReply, tokensUsed, webSearchResults }`
+
+On error at any point: `error` event with `{ code: ErrorCode, message: string }`, then stream closes.
+
+**Client-side consumption pattern** (MUST use fetch, NOT EventSource — POST body required):
+
 ```typescript
-throw new Error("ONYX_UNAVAILABLE");
-throw new Error("AUTH_REQUIRED");
-throw new Error("RENDER_ERROR");
-```
-
-Route handlers catch and match with `if (message === "CODE")`.
-
-Error codes from `src/types/api.ts`:
-`AUTH_REQUIRED`, `AUTH_FORBIDDEN`, `VALIDATION_ERROR`, `NOT_FOUND`, `GENERATION_FAILED`, `ONYX_UNAVAILABLE`, `RENDER_ERROR`, `QA_GATE_FAILED`, `CLOUDINARY_ERROR`, `LINK_VERIFICATION_FAILED`, `INTERNAL_ERROR`
-
-### 5C. External Service Call Pattern
-
-**Canonical example** — `src/lib/onyx/client.ts`:
-- `fetchWithRetry(url, options, timeoutMs)` — AbortController timeout + exponential backoff
-- Constants: `MAX_RETRIES = 3`, `BASE_DELAY_MS = 500`
-- Retryable: connection errors + 502/503/504
-- Non-retryable: 400/401/403/404
-- Response mapping function: snake_case → camelCase
-- Safe variant: `searchOnyxSafe()` → returns null on failure
-- Multi variant: `searchOnyxMulti()` → Promise.allSettled for parallel queries
-
-### 5D. Zod Validation Pattern
-
-**Schema validation** — `src/lib/article-schema/validate.ts`:
-```typescript
-const parsed = CanonicalArticleDocumentSchema.safeParse(doc);
-if (!parsed.success) {
-  for (const issue of parsed.error.issues) {
-    errors.push({ path: issue.path.join("."), message: issue.message });
-  }
-  return { valid: false, errors, warnings };
-}
-```
-
-**Request validation** (routes): `parsed.error.flatten()` for details.
-
-### 5E. Module Export Structure
-
-All `src/lib/*/` modules use barrel exports via `index.ts`:
-```typescript
-// src/lib/onyx/index.ts
-export { searchOnyx, searchOnyxSafe, searchOnyxMulti, getOnyxConfig } from './client';
-export type { OnyxSearchFilters } from './client';
-export { buildSearchQueries } from './query-builder';
-export type { ArticleBrief } from './query-builder';
-export { assembleOnyxContext } from './context-assembler';
-export { checkOnyxHealth } from './health-checker';
-```
-
-File naming: kebab-case. Function exports: named (no default exports).
-
-### 5F. Database Query Pattern
-
-Direct Prisma calls in routes (no abstraction layer):
-```typescript
-const entries = await prisma.contentMap.findMany({
-  select: contentMapSelect,
-  orderBy: { createdAt: "desc" },
+const response = await fetch("/api/articles/generate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(requestPayload),
 });
+
+// Pre-stream errors come as JSON, NOT SSE
+if (!response.ok) {
+  const errorData = await response.json();
+  // Handle { success: false, error: { code, message } }
+  return;
+}
+
+// Consume SSE stream
+const reader = response.body!.getReader();
+const decoder = new TextDecoder();
+let buffer = "";
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  buffer += decoder.decode(value, { stream: true });
+  const parts = buffer.split("\n\n");
+  buffer = parts.pop() ?? "";
+  for (const part of parts) {
+    const lines = part.split("\n");
+    let eventType = "", data = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) eventType = line.slice(7);
+      if (line.startsWith("data: ")) data = line.slice(6);
+    }
+    if (eventType && data) {
+      handleEvent(eventType as StreamEventType, JSON.parse(data));
+    }
+  }
+}
 ```
 
-`retryDatabaseOperation()` available in `src/lib/db/retry.ts` for cold-start resilience.
+**Event handling map for ChatPanel:**
 
-### 5G. Import Conventions
+| Event | UI Action |
+|---|---|
+| `status` | `setStatusMessage(data.message)` — show in chat as system message |
+| `text_delta` | `appendStreamingText(data.text)` — append into streaming bubble |
+| `web_search` | Show "Searching: {query}" indicator |
+| `document` | Intermediate doc — can render live preview with `renderArticle()` |
+| `validation` | `setValidationResult(data)` — store for toolbar badge |
+| `complete` | Extract `{ document, html, conversationReply }`. Set `currentDocument` + `currentHtml`. Push user + assistant `ConversationMessage`s to history. Clear streaming state. Set `isGenerating = false` |
+| `error` | Show error message in chat. Set `isGenerating = false` |
+
+### 5C. Renderer Usage Pattern
 
 ```typescript
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/auth/session";
-import { searchOnyx } from "@/lib/onyx";
-import { renderArticle } from "@/lib/renderer";
-import { validateCanonicalDocument, repairCanonicalDocument } from "@/lib/article-schema";
-import type { CanonicalArticleDocument } from "@/types/article";
-import type { ValidationResult } from "@/types/api";
-import { z } from "zod";
+import { renderArticle, TEMPLATE_VERSION } from "@/lib/renderer";
+import type { RendererInput } from "@/types/renderer";
+
+const input: RendererInput = {
+  document: canonicalDoc,
+  htmlOverrides: null,       // null for Guide 6 (Canvas Edit is Guide 7)
+  templateVersion: TEMPLATE_VERSION,  // "2026.1" — ALWAYS use constant
+};
+
+const result = renderArticle(input);
+// result.html = complete <!DOCTYPE html> document — use as iframe srcDoc
 ```
 
-- `@/` path alias for all internal imports
-- `type` keyword for type-only imports
-- Third-party imports last
+**Renderer output is a complete standalone HTML document** with:
+- Google Fonts preconnect + link tags
+- Full BWC_STYLESHEET (363 lines) embedded in `<style>`
+- JSON-LD schema blocks
+- `data-cad-path` attributes on all editable elements
+- All BEM components scoped to `.bwc-article` / `.blog-content`
 
-### 5H. Streaming Pattern — NONE EXISTS YET
+### 5D. Iframe CSS Isolation Strategy
 
-**No existing route uses streaming.** Guide 5 will introduce the first streaming endpoint. The pattern must be established here. Based on the architecture doc, the approach is:
-- Server-Sent Events (SSE) or `ReadableStream` from the Next.js route
-- Claude SDK streams the response
-- Orchestration layer parses partial JSON as it arrives
-- Incremental chunks sent to the client
+```tsx
+<iframe
+  srcDoc={currentHtml}
+  className="w-full h-full border-0"
+  title="Article preview"
+  sandbox="allow-same-origin"
+/>
+```
+
+- `srcDoc` creates a separate document context — **zero CSS leakage** between dashboard Tailwind and BWC brand styles
+- `allow-same-origin` is required for Google Fonts CDN requests to load inside the iframe
+- No additional style injection needed — renderer output is self-contained
+- For mobile preview toggle: set iframe container width to `375px`; for desktop: `100%`
+
+### 5E. Auth Patterns
+
+**Server components (dashboard layout):**
+```typescript
+import { getCurrentUser } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+
+const user = await getCurrentUser();
+if (!user) redirect("/login");
+```
+
+**Client components (after SessionProvider):**
+```typescript
+"use client";
+import { useSession } from "next-auth/react";
+
+const { data: session } = useSession();
+// session.user: { id: string, email: string, name: string, role: string }
+```
+
+**Dashboard layout must include SessionProvider:**
+```tsx
+// src/app/(dashboard)/layout.tsx
+import { SessionProvider } from "next-auth/react";
+```
+
+### 5F. Type Import Convention
+
+```typescript
+import type { CanonicalArticleDocument } from "@/types/article";
+import type { StreamEvent, StreamEventType, GenerateArticleRequest, ConversationMessage } from "@/types/claude";
+import type { RendererOutput } from "@/types/renderer";
+import type { ContentMapEntry } from "@/types/content-map";
+import type { ValidationResult } from "@/types/api";
+```
+
+Always import from specific files, never from barrel `@/types/index.ts`.
+Always use `import type` for type-only imports.
+
+### 5G. CSS/Styling Convention
+
+- Tailwind v4 with `@import "tailwindcss"` syntax (NOT v3 `@tailwind` directives)
+- No `tailwind.config.js` — CSS-based config via `@theme` blocks in `globals.css`
+- Existing pages use inline Tailwind with raw hex values: `text-[#bc9b5d]`, `bg-[#fcf8ed]`
+- Dashboard fonts: Geist Sans + Geist Mono (from root layout `next/font/google`)
+- No component library installed — all UI built with Tailwind utilities
+
+### 5H. Error Response Handling Pattern
+
+```typescript
+// Frontend error handling for API calls
+const response = await fetch("/api/content-map");
+const data = await response.json();
+
+if (!data.success) {
+  // data.error: { code: ErrorCode, message: string, details?: unknown }
+  showError(data.error.message);
+  return;
+}
+
+// data.data is the typed result
+const entries: ContentMapEntry[] = data.data;
+```
+
+Error codes from `src/types/api.ts`: `AUTH_REQUIRED` (401), `AUTH_FORBIDDEN` (403), `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `GENERATION_FAILED` (500), `ONYX_UNAVAILABLE` (503), `RENDER_ERROR` (500), `QA_GATE_FAILED` (422), `CLOUDINARY_ERROR` (500), `LINK_VERIFICATION_FAILED` (422), `INTERNAL_ERROR` (500).
 
 ---
 
 ## 6. Integration Readiness
 
-| Service | Status | Notes |
-|---|---|---|
-| **Neon Postgres** | ✅ Verified LIVE | 39 content_map rows (8 hubs, 31 spokes, all parentHubId wired), 10 internal_links, 1 user. All 9 schema models present. |
-| **Onyx CE** | ✅ Verified LIVE | Health: HTTP 200 in 105ms. **33 documents indexed**, last index: 2026-03-02T13:24Z. Search: HTTP 200 in 90-468ms for "Bajo vineyard" — returns documents with relevance scores (top: 0.953), source attribution (`google_drive`), match highlights ("Bajo vineyard is completely flat, at around 4,000 feet in elevation"). Correct endpoint: `/api/admin/search`. |
-| **Claude API** | ✅ Verified LIVE | Basic completion: HTTP 200 in 1.67s, model `claude-sonnet-4-5-20250929` confirmed accessible. Streaming: SSE events firing correctly (`message_start`, `content_block_start`, `content_block_delta`). Web search tool: working, returned bhutanwine.com URL from test search. `@anthropic-ai/sdk` still needs to be installed as a package dependency. |
-| **Cloudinary** | ✅ Verified LIVE | API credentials valid. CDN delivery with transforms (`w_800,f_auto,q_auto`): HTTP 200 in 146ms. Guide 5 doesn't upload images but renderer uses `buildCloudinaryUrl()`. |
-| **Vercel Deployment** | ✅ Verified LIVE | `bwc-content-engine.vercel.app/api/health` → HTTP 200 in 293-378ms. |
+| Service | Guide 6 Usage | Status | Notes |
+|---|---|---|---|
+| Claude API (via `/api/articles/generate`) | SSE streaming generation | VERIFIED | POST body: articleId + userMessage; returns 7 event types |
+| Renderer (via `renderArticle()`) | Produce iframe HTML from CanonicalArticleDocument | VERIFIED | Pure sync function, self-contained HTML output |
+| Content Map API | Populate article selector dropdown | VERIFIED | 39 entries available, ordered by createdAt desc |
+| NextAuth v4 | Session-based dashboard access | VERIFIED | JWT strategy, 30-day maxAge, login page at /login |
+| Neon Postgres | Auth session + content map queries | VERIFIED | All tables present, seeded data correct |
 
-### Known Quirks
-
-1. **Onyx response time**: 4GB DigitalOcean droplet — search takes ~150-470ms. Client has 10s timeout + 3 retries with backoff. Note: `/api/direct-qa` returns 404 — correct endpoint per client.ts is `/api/admin/search`.
-2. **Claude streaming format**: Confirmed working via live test. SSE events: `message_start` → `content_block_start` → `content_block_delta` (repeated) → `content_block_stop` → `message_stop`. Guide 5 must parse these into partial JSON.
-3. **web_search tool**: Confirmed working in live test — returned real URLs. Architecture doc specifies `type: "web_search_20250305"`. Use latest SDK tool type.
-4. **ANTHROPIC_MAX_OUTPUT_TOKENS**: `.env.example` documents `16384`. A full hub article CanonicalArticleDocument (2500+ words) in JSON will be ~20K-30K characters, which fits within this limit.
-5. **Model ID format**: `.env` may have `claude-sonnet-4-5` (no date suffix) while API tests used `claude-sonnet-4-5-20250929`. Verify the generation pipeline resolves the correct model ID.
+**Known quirks:**
+- Onyx can be slow on cold start (4GB droplet) — the orchestrator has 10s timeout + retry. This affects generation latency, not the UI directly.
+- Claude streaming can take 15-30s for full article generation — the UI must show progress via `status` events and `text_delta` streaming.
+- The `complete` event's `html` field is the final rendered HTML. The `document` event's intermediate doc can also be rendered client-side for a live preview during generation.
+- The generate route expects `articleId` (a `contentMap.id`), not a content map slug. The frontend must fetch the content map list, let the user pick an entry, and pass its `id`.
 
 ---
 
 ## 7. Risks and Blockers
 
-### BLOCKER: .env ANTHROPIC_MAX_OUTPUT_TOKENS Mismatch ❌
+### No Blockers. All services pass. Guide 6 can proceed.
 
-**CRITICAL:** `.env` has `ANTHROPIC_MAX_OUTPUT_TOKENS="4096"` but `.env.example` documents `16384`. Hub articles (2500+ words as structured JSON) will exceed 4096 output tokens. **Must update `.env` to `16384` before Guide 5 generation runs.**
+### Risks (LOW severity):
 
-### Risk 1: Streaming JSON Parsing Complexity ⚠️
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Middleware not active (`src/proxy.ts` not recognized) | Dashboard routes theoretically unprotected at middleware level | Guide 6's layout.tsx includes server-side `getCurrentUser()` + `redirect("/login")` as primary auth guard |
+| Date field serialization mismatch (`Date` vs `string`) | ArticleSelector could display "[object Object]" for dates | Treat `scheduledDate`/`publishedDate` as `string \| null` in UI code |
+| Template version drift (Zod default "1.0" vs actual "2026.1") | Renderer could use wrong template version | Always import `TEMPLATE_VERSION` constant from `@/lib/renderer` |
+| No article save/persistence route | Work lost on browser refresh | Expected — persistence is Guide 11 scope. Could warn user before navigating away |
+| First frontend guide — no component patterns to follow | Inconsistency risk for Guides 7-10 | Establish clean patterns in Guide 6 that downstream guides can copy |
+| No `GET /api/articles/[id]` route | Cannot load previously saved drafts | Not needed in Guide 6 (all state is in-memory); Guide 11 will add this |
 
-Claude will stream a CanonicalArticleDocument as JSON text. Partial JSON is inherently invalid until complete. Options:
-- **Option A**: Stream the full response, parse JSON only when complete. Simple but no live preview.
-- **Option B**: Use a streaming JSON parser (e.g., `partial-json` or custom) to extract sections as they complete. Complex but enables incremental rendering.
-- **Option C**: Instruct Claude to output sections delimited by markers, parse each section individually. Middle ground.
-
-**Recommendation**: Start with Option A for Guide 5 (get the pipeline working), then optimize for streaming preview in Guide 6 when the UI exists.
-
-### Risk 2: Token Budget for 7-Layer System Prompt ⚠️
-
-Layer sizes (estimated):
-- Layer 1 (SOP): ~48KB → ~12,000 tokens
-- Layer 2a (Brand Style Guide): ~29KB → ~7,000 tokens
-- Layer 2b (Compiled Template reference): ~5KB → ~1,200 tokens
-- Layer 3 (Article Brief): ~500 bytes → ~125 tokens
-- Layer 4 (KB Context): ~8KB cap → ~2,000 tokens
-- Layer 5 (Link Graph): ~2KB → ~500 tokens
-- Layer 6 (Photo Manifest): ~1KB → ~250 tokens
-- **Total system prompt: ~23,000 tokens**
-
-With `claude-sonnet-4-5` (200K context), this leaves ~160K for conversation history + output. Manageable but Layer 1 and 2a are large. Consider whether the full SOP text is needed every call or if a condensed version suffices.
-
-### Risk 3: web_search Tool Type Version
-
-Architecture doc references `web_search_20250305`. The Anthropic API may have updated this tool type. Guide 5 should use the latest SDK's tool type and verify it works.
-
-### Risk 4: No Streaming Pattern Precedent
-
-Guide 5 establishes the streaming pattern for the entire project. Guide 6 (UI) will consume this stream. The SSE format and event types chosen here will be locked in. Must design carefully.
-
-### Risk 5: Middleware Deprecation Warning (Non-blocking)
-
-Next.js 16.1.6 shows: `middleware` file convention deprecated — rename to `proxy` before Guide 6. Non-blocking for Guide 5 but will become an error in future Next.js versions.
-
-### Risk 6: Prisma Config Deprecation (Non-blocking)
-
-Prisma `package.json#prisma` config is deprecated — should migrate to `prisma.config.ts` before Prisma 7. Non-blocking for Guide 5.
+### Non-blocking issues:
+- Prisma `package.json#prisma` config deprecated — will break in Prisma 7. Not a Guide 6 concern.
+- `AUTH_FORBIDDEN` error message says "Admin access required" even when editors are allowed — consistently misleading across all routes, do not introduce a different variant.
 
 ---
 
-## 8. Deviations from Plan
+## 8. Deviations from Orchestration Doc Predictions
 
-### 8A. Type Naming Discrepancy
-
-Orchestration doc §5B calls them:
-- `GenerateArticleRequest` (with `photoManifest` field)
-- `GenerateArticleResponse` (with `html` and `validationResult` fields)
-
-Actual types in `src/types/claude.ts`:
-- `GenerationRequest` (no `photoManifest`)
-- `GenerationResponse` (has `tokensUsed` and `webSearchResults` instead of `html` and `validationResult`)
-
-**Resolution**: Guide 5 should extend the existing types to match the orchestration doc's contract, or define route-specific request/response types that bridge the gap.
-
-### 8B. `env.ts` Incomplete
-
-`src/lib/env.ts` doesn't expose `ANTHROPIC_SMALL_MODEL`, `ANTHROPIC_MAX_OUTPUT_TOKENS`, or `ENABLE_WEB_SEARCH`. Guide 5 must extend this file.
-
-### 8C. Claude Client Is a Stub
-
-The orchestration doc assumes `src/lib/claude/client.ts` has a working SDK client. In reality it's a 4-line config object. Guide 5 must build the full client from scratch, installing `@anthropic-ai/sdk`.
-
-### 8D. Internal Links Table — Limited Data
-
-The `internal_links` table has only 10 rows (core pages). No article-to-article links exist yet because no articles have been published. Guide 5's Layer 5 link graph builder must handle:
-1. Core page links (from `internal_links` where `linkType = 'to-core-page'`)
-2. Published article links (from `content_map` where `status = 'published'` and `publishedUrl IS NOT NULL`)
-3. Hub-spoke relationships (from `content_map` parent/child relations)
-
-Currently #2 will return 0 results (no published articles), which is correct.
+| Prediction (Orchestration Doc) | Actual Codebase | Impact on Guide 6 |
+|---|---|---|
+| Middleware at `src/middleware.ts` | Renamed to `src/proxy.ts` (commit 45be677) | Must use server-side auth in layout instead of relying on middleware |
+| `GenerateArticleRequest` in `src/types/api.ts` | Actually in `src/types/claude.ts` | Import from `@/types/claude`, not `@/types/api` |
+| Root layout has SessionProvider | No SessionProvider anywhere | Guide 6 dashboard layout must add SessionProvider |
+| `src/components/` exists with some structure | Directory does not exist at all | Guide 6 creates the entire component tree from scratch |
+| Template version "1.0" | Actual constant is `TEMPLATE_VERSION = "2026.1"` | Always use `TEMPLATE_VERSION` import, never hardcode |
+| `src/app/(dashboard)/layout.tsx` exists | Only `page.tsx` exists (placeholder) | Must create layout.tsx from scratch |
+| Renderer can do incremental/partial rendering | Renderer is a pure synchronous function requiring a complete document | Use the `document` SSE event (full doc) to call `renderArticle()` for live preview during generation; stream `text_delta` events to a separate streaming text display |
 
 ---
 
-## Appendix A: Complete File Inventory for Guide 5
+## Summary
 
-### Files to CREATE:
-```
-src/lib/prompt-assembly/
-  index.ts              ← barrel exports
-  layer-sop.ts          ← Layer 1: Load SOP document
-  layer-style-guide.ts  ← Layer 2a: Load Brand Style Guide
-  layer-template.ts     ← Layer 2b: Compiled Template component reference
-  layer-brief.ts        ← Layer 3: Article Brief from content_map
-  layer-kb-context.ts   ← Layer 4: Onyx KB context
-  layer-link-graph.ts   ← Layer 5: Internal link graph from DB
-  layer-photo-manifest.ts ← Layer 6: Photo manifest
-  assembler.ts          ← Combine all layers into system prompt
+**Guide 6: Split-Pane UI + Chat Mode** is ready to build. All 5 prerequisite guides are complete. All backend services are connected and verified. All TypeScript types, API routes, and library modules that Guide 6 depends on exist and are working correctly.
 
-src/lib/orchestration/
-  index.ts              ← barrel exports
-  orchestrator.ts       ← Main generation orchestrator
-  conversation.ts       ← Conversation history manager
-  streaming-parser.ts   ← Parse streaming JSON from Claude
-  post-processing.ts    ← Validation + repair + link check pipeline
+**What needs to happen:**
+1. Install 3 npm packages: `react-resizable-panels`, `lucide-react`, `zustand`
+2. Create `src/types/ui.ts` for UI state types
+3. Create `src/app/(dashboard)/layout.tsx` with SessionProvider + server-side auth guard
+4. Create 11 component files across `src/components/{chat,preview,layout}/`
+5. Replace the placeholder `src/app/(dashboard)/page.tsx` with the main app shell
 
-src/lib/claude/
-  client.ts             ← REPLACE stub with full Anthropic SDK client
-  streaming.ts          ← Streaming response handler
-  tools.ts              ← web_search tool configuration
-  index.ts              ← barrel exports
+**No new API routes needed.** Guide 6 is a pure frontend guide that consumes existing backend infrastructure.
 
-src/app/api/articles/generate/
-  route.ts              ← POST: streaming generation endpoint
-
-src/app/api/links/verify/
-  route.ts              ← POST: batch link verification
-
-scripts/test-guide-5.ts ← Integration test
-```
-
-### Files to MODIFY:
-```
-src/lib/env.ts          ← Add ANTHROPIC_SMALL_MODEL, ANTHROPIC_MAX_OUTPUT_TOKENS, ENABLE_WEB_SEARCH
-src/types/claude.ts     ← Extend GenerationRequest/Response, add streaming event types
-.env.example            ← Verify all Guide 5 vars are documented
-package.json            ← Add @anthropic-ai/sdk dependency
-```
-
-### Files to READ (not modify):
-```
-docs/BWC Master Content Engine SOP.md                           ← Layer 1 content
-docs/Bhutan Wine Company — Brand Style Guide for HTML Blog Posts (3).md  ← Layer 2a content
-src/lib/renderer/compiled-template.ts                           ← Layer 2b reference
-src/lib/onyx/                                                   ← Layer 4 integration
-src/lib/article-schema/                                         ← Post-generation validation
-src/lib/renderer/                                               ← Post-validation rendering
-prisma/schema.prisma                                            ← Layer 3 & 5 DB queries
-```
+**Key architectural decisions for the guide:**
+- **State management:** Zustand (install as dependency, sets the pattern for all downstream guides)
+- **CSS isolation:** iframe with `srcDoc` — renderer output is self-contained, zero leakage risk
+- **SSE consumption:** `fetch()` + `ReadableStream` + manual SSE line parsing (not EventSource — POST required)
+- **Auth guard:** Server-side `getCurrentUser()` + redirect in layout (middleware is inactive)
+- **Live preview:** Call `renderArticle()` client-side when `document` SSE event arrives; show final HTML from `complete` event

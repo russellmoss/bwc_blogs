@@ -72,14 +72,35 @@ export async function streamGeneration(
 
   const finalMessage = await stream.finalMessage();
 
+  // === Debug logging ===
+  console.log("[claude-streaming] stop_reason:", finalMessage.stop_reason);
+  console.log("[claude-streaming] model:", finalMessage.model);
+  console.log("[claude-streaming] usage:", JSON.stringify(finalMessage.usage));
+  console.log("[claude-streaming] max_tokens configured:", getMaxOutputTokens());
+  console.log("[claude-streaming] content blocks:", finalMessage.content.length, "types:", finalMessage.content.map(b => b.type));
+  console.log("[claude-streaming] accumulated text length:", accumulatedText.length);
+
+  // Check for truncated output
+  if (finalMessage.stop_reason === "max_tokens") {
+    console.error("[claude-streaming] OUTPUT TRUNCATED at", finalMessage.usage.output_tokens, "tokens");
+    callbacks.onError?.(
+      new Error(
+        `Output truncated — Claude used all ${finalMessage.usage.output_tokens} output tokens. ` +
+        `Increase ANTHROPIC_MAX_OUTPUT_TOKENS (currently ${getMaxOutputTokens()}).`
+      )
+    );
+  }
+
   // Extract any text from the final message content blocks
   // (in case text events didn't fire for all blocks)
   if (!accumulatedText) {
+    console.log("[claude-streaming] No text from stream events, extracting from finalMessage blocks");
     for (const block of finalMessage.content) {
       if (block.type === "text") {
         accumulatedText += block.text;
       }
     }
+    console.log("[claude-streaming] Extracted text length:", accumulatedText.length);
   }
 
   return {
