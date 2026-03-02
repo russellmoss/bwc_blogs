@@ -1,122 +1,188 @@
-# Integration Verifier Findings — Guide 2 Pre-Check
-
-**Date:** 2026-03-01  
-**Scope:** Guide 2 readiness verification (Content Map — CSV Import, CRUD API, Seed Data)
+# Integration Verifier Findings
+**Date:** 2026-03-02
+**Scope:** Onyx CE re-test after admin API key elevation and Claude LLM provider enabled
 
 ---
 
 ## Summary Table
 
-| Service | Status | Response Time | Notes |
-|---|---|---|---|
-| Neon Postgres | PASS | ~1s | All 9 tables exist, connection confirmed |
-| Next.js Build | PASS | ~6.2s compile | Zero errors, all routes compiled |
-| Vercel Deployment | PASS | 1.045s | `/api/health` returns HTTP 200 |
-| Onyx RAG | SKIPPED | N/A | Not needed for Guide 2 |
-| Claude API | SKIPPED | N/A | Not needed for Guide 2 |
-| Cloudinary | SKIPPED | N/A | Not needed for Guide 2 |
+| Service | Endpoint | Status | HTTP Code | Response Time | Notes |
+|---|---|---|---|---|---|
+| Onyx Admin Search | POST /api/admin/search | PASS | 200 | 2.63s | Previously 403, now working |
+| Onyx send-chat-message | POST /api/chat/send-chat-message | PASS | 200 | 18-35s | Previously failed with LLM error; now returns grounded answer with citations |
+| Onyx Create Session | POST /api/chat/create-chat-session | PASS | 200 | 40-55s | Cold-start latency; returns valid session UUID |
+| Onyx Streaming send-message | POST /api/chat/send-message | PASS | 200 | ~5s first chunk | NDJSON: reasoning deltas and search docs |
+| Onyx Indexing Status | POST /api/manage/admin/connector/indexing-status | PASS | 200 | 0.52s | GET returns 405; correct method is POST |
 
 ---
 
-## Tier 1: Core Infrastructure
+## Test 1: POST /api/admin/search
 
-### Neon Postgres Connection
-- **Result:** PASS
-- **Method:** `npx prisma validate` — schema valid, connection confirmed
-- **Also verified:** `npx prisma db pull --print` returned full schema with all models
+**Status:** PASS (previously 403, now 200)
+**HTTP Code:** 200
+**Response Time:** 2.634s
 
-### Build Check
-- **Result:** PASS
-- **Output:** `✓ Compiled successfully in 6.2s`
-- **Routes compiled:**
-  - `○ /` (static)
-  - `○ /_not-found` (static)
-  - `ƒ /api/auth/[...nextauth]` (dynamic)
-  - `ƒ /api/health` (dynamic)
-  - `ƒ /api/users` (dynamic)
-  - `ƒ /api/users/[id]` (dynamic)
-  - `○ /login` (static)
-- **Warning (non-blocking):** Prisma `package.json#prisma` config deprecated — will be removed in Prisma 7. Also middleware file convention deprecated in favor of "proxy". Neither blocks Guide 2.
+**Request body:**
+```json
+{"query": "Bajo vineyard elevation", "filters": {}}
+```
 
-### Vercel Health Endpoint
-- **Result:** PASS
-- **URL:** `https://bwc-content-engine.vercel.app/api/health`
-- **Response:** HTTP 200 in 1.045s
+**Response shape:** Array of document objects containing: document_id, chunk_ind, semantic_identifier, blurb, score (float), match_highlights (hi-tagged), source_type, updated_at.
+
+**Top result:**
+- semantic_identifier: the-grapes-vineyards_grapes_vineyards.md
+- score: 6.42
+- match_highlight: "The Bajo vineyard is completely flat, at around 4,000 feet in elevation, and is located just above the Sankosh river."
+- updated_at: 2025-09-02T18:06:51Z
+
+**Total documents returned:** 16 documents from Google Drive sources.
 
 ---
 
-## Tier 2: Database State
+## Test 2: POST /api/chat/send-chat-message (LLM synthesis)
 
-### Table Row Counts
+**Status:** PASS (previously failed with "No default LLM provider found")
+**HTTP Code:** 200
+**Response Time:** 18-35s total
 
-| Table | Row Count | Expected | Status |
-|---|---|---|---|
-| users | 1 | 1 (seeded admin) | PASS |
-| content_map | 0 | 0 (Guide 2 seeds it) | PASS |
-| article_documents | 0 | 0 | PASS |
-| article_html | 0 | 0 | PASS |
-| internal_links | 0 | 0 (Guide 2 seeds core pages) | PASS |
-| photos | 0 | 0 | PASS |
-| article_photos | 0 | 0 | PASS |
-| leads | 0 | 0 | PASS |
-| lead_events | 0 | 0 | PASS |
+**Request body:**
+```json
+{"message": "What is the elevation of Bajo vineyard?", "chat_session_info": {"persona_id": 0}, "stream": false, "include_citations": true}
+```
 
-**Admin user seeded:** Yes — 1 user row confirmed (russellmoss87@gmail.com per `.env`)
+**Response shape (77,401 bytes total):**
+- `answer` (string): Markdown answer with inline citation links
+- `answer_citationless` (string): Same answer without citation markup
+- `pre_answer_reasoning` (string): Chain-of-thought summary
+- `tool_calls` (array): KB search query used and raw retrieved content
+- `documents` (array): Full document objects used as context
 
----
+**Sample answer returned:**
+"The Bajo vineyard is located at approximately 4,000 feet in elevation. It is nestled in the beautiful Punakha Valley in western Bhutan, situated on completely flat terrain just above the Sankosh river. The vineyard enjoys dry, hot temperatures year-round thanks to a protective rain shadow and gentle warming breezes, making it an ideal site for red varietals like Merlot and Cabernet Sauvignon."
 
-## Tier 3: Guide 1 API Route Files
-
-| File | Exists | Status |
-|---|---|---|
-| `src/app/api/health/route.ts` | YES | PASS |
-| `src/app/api/auth/[...nextauth]/route.ts` | YES | PASS |
-| `src/app/api/users/route.ts` | YES | PASS |
-| `src/app/api/users/[id]/route.ts` | YES | PASS |
+**IMPORTANT:** Despite stream=false in the request, this endpoint delivers its response as a streaming HTTP body. HTTP 200 is returned on connection but the body arrives incrementally. Any caller with max-time below 35s will receive an empty or truncated body. Minimum recommended max-time: 60s.
 
 ---
 
-## Tier 4: Package Dependencies for Guide 2
+## Test 3a: POST /api/chat/create-chat-session
 
-| Package | Installed | Version | Notes |
-|---|---|---|---|
-| `prisma` | YES | ^6.19.2 | Core ORM — ready |
-| `@prisma/client` | YES | ^6.19.2 | Client — ready |
-| `zod` | YES | ^4.3.6 | Validation — ready |
-| `papaparse` | NO | — | **MISSING** — Guide 2 needs this for CSV import |
-| `@types/papaparse` | NO | — | **MISSING** — dev dependency for papaparse |
-| `next-auth` | YES | ^4.24.13 | Auth — ready |
-| `bcryptjs` | YES | ^3.0.3 | Password hashing — ready |
-| `tsx` | YES | ^4.21.0 (dev) | TS execution for scripts — ready |
+**Status:** PASS
+**HTTP Code:** 200
+**Response Time:** 0.4s-55s (highly variable; LLM cold-start)
+**Request body:** {"persona_id": 0}
+**Response:** {"chat_session_id": "6487fd50-23de-436b-bbab-045671acac47"}
+
+**Note:** Latency is inconsistent. Warm calls: 0.4s. Cold calls: 40-55s. Use max-time 60s.
+
+---
+
+## Test 3b: POST /api/chat/send-message (streaming, skip_gen_ai=true)
+
+**Status:** PASS
+**HTTP Code:** 200
+**Response Time:** First NDJSON chunk within 2-5s
+
+**Request body:**
+```json
+{"chat_session_id": "...", "parent_message_id": null, "message": "Bajo vineyard elevation", "search_doc_ids": null, "retrieval_options": {"run_search": "always", "real_time": true}, "skip_gen_ai_answer_generation": true}
+```
+
+**Response format:** NDJSON stream (one JSON object per line).
+
+**Event sequence observed:**
+1. {"user_message_id": 8, "reserved_assistant_message_id": 9}
+2. {"obj": {"type": "reasoning_start"}}
+3. Multiple {"obj": {"type": "reasoning_delta", "reasoning": "..."}} events
+4. {"obj": {"type": "reasoning_done"}}
+5. {"obj": {"type": "search_tool_start", "is_internet_search": false}}
+6. {"obj": {"type": "search_tool_queries_delta", "queries": ["Bajo vineyard elevation", "Bajo vineyard altitude", "Bajo vinedo elevacion"]}}
+7. {"obj": {"type": "search_tool_documents_delta", "documents": [...]}}
+
+**Top search result in stream:**
+- semantic_identifier: the-grapes-vineyards_grapes_vineyards.md
+- score: 0.8015
+- match_highlight: "The Bajo vineyard is completely flat, at around 4,000 feet in elevation"
+
+**Key finding:** Even with skip_gen_ai_answer_generation=true, Onyx still emits reasoning events. Claude extended thinking fires at the LLM provider level before retrieval and cannot be suppressed by this flag. The flag only skips final answer synthesis.
+
+---
+
+## Test 4: POST /api/manage/admin/connector/indexing-status
+
+**Status:** PASS (previously 403; GET returns 405; POST returns 200)
+**HTTP Code (GET):** 405 Method Not Allowed
+**HTTP Code (POST):** 200
+**Response Time (POST):** 0.522s
+**Request body for POST:** {}
+
+**Full response:**
+```json
+[{
+  "source": "google_drive",
+  "summary": {
+    "total_connectors": 1,
+    "active_connectors": 1,
+    "public_connectors": 1,
+    "total_docs_indexed": 33
+  },
+  "current_page": 1,
+  "total_pages": 1,
+  "indexing_statuses": [{
+    "cc_pair_id": 2,
+    "name": "BWC connnector",
+    "source": "google_drive",
+    "access_type": "public",
+    "cc_pair_status": "ACTIVE",
+    "in_progress": false,
+    "in_repeated_error_state": false,
+    "last_finished_status": "success",
+    "last_status": "success",
+    "last_success": "2026-03-02T11:22:02.194783Z",
+    "is_editable": true,
+    "docs_indexed": 33,
+    "latest_index_attempt_docs_indexed": 0
+  }]
+}]
+```
+
+---
+
+## Knowledge Base State
+
+| Metric | Value |
+|---|---|
+| Connector name | BWC connnector (typo: three n) |
+| Source | Google Drive |
+| Status | ACTIVE |
+| Total docs indexed | 33 |
+| Last successful index | 2026-03-02T11:22:02Z (today) |
+| In progress | false |
+| Error state | false |
 
 ---
 
 ## Issues Found
 
-### Issue 1: `papaparse` Not Installed (BLOCKER for CSV import feature)
-- Guide 2 includes "CSV Import" functionality
-- `papaparse` and `@types/papaparse` are absent from `package.json`
-- **Action required before implementing CSV import:** `npm install papaparse && npm install --save-dev @types/papaparse`
+1. **send-chat-message always streams despite stream=false** — Endpoint delivers its body as a streaming HTTP response regardless of the stream parameter. Callers must use max-time 60s minimum. A 30s timeout results in an empty body despite HTTP 200.
 
-### Issue 2: Deprecation Warnings (Non-blocking)
-- `package.json#prisma` seed config will be removed in Prisma 7 — migrate to `prisma.config.ts` before upgrading Prisma
-- `middleware` file convention deprecated in Next.js 16 — rename to `proxy` if upgrading
+2. **create-chat-session intermittent latency (0.4s to 55s)** — Likely LLM provider cold-start on Onyx backend. Not a failure; use max-time 60s in integration code.
+
+3. **indexing-status requires POST not GET** — Returns 405 on GET and 200 on POST. Any existing code using GET must be changed to POST.
+
+4. **reasoning_delta events fire even with skip_gen_ai=true** — Claude extended thinking fires at the LLM provider level before retrieval. The skip_gen_ai_answer_generation flag only suppresses final answer synthesis, not the reasoning preamble or search phase.
+
+5. **Connector name typo** — Named "BWC connnector" (three n). Cosmetic only; does not affect function.
 
 ---
 
 ## Recommendations
 
-1. **Before starting Guide 2 CSV import work**, install `papaparse`:
-   ```bash
-   npm install papaparse
-   npm install --save-dev @types/papaparse
-   ```
-2. All database tables are in the expected clean state — Guide 2 can safely seed `content_map` and `internal_links`.
-3. Auth system is confirmed working and all Guide 1 route files exist.
-4. No blockers for Guide 2 CRUD API implementation (table creation, Prisma queries, Zod validation all ready).
+1. **Increase ONYX_SEARCH_TIMEOUT_MS** — Current value 15000ms is insufficient for chat endpoints. Set to 60000ms for send-chat-message and create-chat-session. The 15000ms value is fine for /api/admin/search only.
 
----
+2. **Fix indexing-status HTTP method** — Change GET to POST in any code calling /api/manage/admin/connector/indexing-status.
 
-## Conclusion
+3. **Prefer /api/admin/search for retrieval-only queries** — Fast (2.6s), ranked docs with highlights, no session management needed. Ideal for the article generation pipeline where Onyx retrieval feeds Claude API client-side.
 
-**Guide 2 is clear to proceed** with one action item: install `papaparse` before implementing the CSV import endpoint. All infrastructure, database state, auth system, and build pipeline are healthy.
+4. **Use /api/chat/send-message with skip_gen_ai=true for streaming retrieval** — Delivers search results as stream events quickly (~5s first chunk). Best for workflows needing raw KB chunks without full LLM synthesis inside Onyx.
+
+5. **Handle streaming body in all Onyx chat callers** — Do not use synchronous request/response patterns. All callers of /api/chat/send-chat-message must consume the response as a stream and wait for the full body before parsing JSON.

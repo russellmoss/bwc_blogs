@@ -1,379 +1,439 @@
-# Exploration Results — Guide 2: Content Map — CSV Import, CRUD API, Seed Data
+# Guide 3 Exploration Report: Onyx RAG Integration
 
-**Generated:** 2026-03-01
-**Previous guide completed:** Guide 1 (Foundation)
-**Next guide:** Guide 2
-**Agents used:** code-inspector, integration-verifier, pattern-finder
-
----
-
-## 1. Current Build State
-
-### Guides Complete
-- **Guide 1: Foundation** — DB schema, Prisma, Auth, agent-guard, scaffold, CLAUDE.md
-
-### Inventory Summary
-
-| Category | Count | Details |
-|---|---|---|
-| Prisma models | 9 | User, ContentMap, ArticleDocument, ArticleHtml, InternalLink, Photo, ArticlePhoto, Lead, LeadEvent |
-| API routes | 4 | /api/health (GET), /api/auth/[...nextauth] (GET, POST), /api/users (GET, POST), /api/users/[id] (GET, PATCH, DELETE) |
-| Type modules | 9 | auth, content-map, article, renderer, qa, onyx, claude, photo, api — all re-exported from index.ts |
-| Lib modules | 7 | db/index, db/retry, auth/config, auth/session, auth/password, env, config/site + 3 config stubs (onyx, claude, cloudinary) |
-| Components | 0 | None yet (Guide 6+) |
-| DB rows | 1 | 1 admin user seeded. All other tables at 0 rows. |
-
-### Integration Health
-
-| Service | Status | Notes |
-|---|---|---|
-| Neon Postgres | ✅ Verified | All 9 tables exist, connection confirmed |
-| Next.js Build | ✅ Verified | Compiled in 6.2s, zero errors |
-| Vercel Health | ✅ Verified | /api/health returns 200 in ~1s |
-| Auth System | ✅ Verified | NextAuth configured, login page renders, admin seeded |
-| Onyx CE | ⏭️ Skipped | Not needed for Guide 2 |
-| Claude API | ⏭️ Skipped | Not needed for Guide 2 |
-| Cloudinary | ⏭️ Skipped | Not needed for Guide 2 |
+> Generated: 2026-03-02
+> Status: Ready for guide build
+> Prerequisites: Guide 1 (Foundation) complete, Guide 2 (Content Map) complete
 
 ---
 
-## 2. Next Guide Target
+## 1. Guide 3 Scope and Objectives
 
-### Guide 2: Content Map — CSV Import, CRUD API, Seed Data
+**What it builds:** The connection between the Next.js app and the Onyx CE instance for Knowledge Base retrieval.
 
-**From orchestration doc §7 (lines 690–712):**
+**Why it exists:** The orchestration layer (Guide 5) needs KB context to populate Layer 4 of the system prompt. This guide builds the retrieval layer.
 
-> What it builds: The Content Map management layer — importing the CSV into the `content_map` table, CRUD API routes, core page registry seeding, and the internal link seed data.
+**File ownership** (must not create/modify files outside these paths):
+- `src/app/api/onyx/` — API route handlers
+- `src/lib/onyx/` — client library, query builder, context assembler, health checker
+- `scripts/test-guide-3.ts` — integration test script
 
-**Produces:**
-- `src/app/api/content-map/route.ts` — GET (list all), POST (create one)
-- `src/app/api/content-map/[id]/route.ts` — GET, PATCH, DELETE
-- `src/app/api/content-map/import/route.ts` — POST (CSV import)
-- `src/lib/content-map/` — import logic, slug generation, CRUD helpers
-- `prisma/seed.ts` — extended with CSV import + core page seeding
-- `scripts/test-guide-2.ts`
-
-**Integration gate:** 39 rows in `content_map`. Core pages in `internal_links`. CRUD endpoints work.
-
-**Human gate:** API returns correct data for test queries.
-
-**Relevant architecture doc sections:**
-- §3B (lines 359–511): Content Map & Blog Registry schema, core page registry, CSV column mapping
-- Appendix B (lines 1365–1381): Core page seed data (10 BWC URLs)
-- Appendix C (lines 1385–1409): CSV column → DB column mapping with transforms
-
-**File ownership (§5E):** Guide 2 owns `src/app/api/content-map/`, `src/lib/content-map/`, `prisma/seed.ts` (content map portion)
+**Downstream dependency:** Guide 5 (Orchestration Layer + Claude API) depends on Guide 3.
 
 ---
 
-## 3. Dependencies Satisfied
+## 2. Deliverables
 
-### Prisma Schema — ✅ COMPLETE
-- `ContentMap` model: all 24 fields present (26 including id and relations). Field-level verification passed.
-- `InternalLink` model: all 6 fields present (8 including id and timestamps). Field-level verification passed.
-- All 9 models exist in `prisma/schema.prisma`. Tables pushed to Neon. No migrations directory.
+### Files to Create
+| File | Purpose |
+|------|---------|
+| `src/lib/onyx/client.ts` | Replace stub with full HTTP client (timeout + retry + exponential backoff) |
+| `src/lib/onyx/query-builder.ts` | Build multiple focused queries per article brief |
+| `src/lib/onyx/context-assembler.ts` | Format OnyxSearchResult[] into prompt-ready string for Layer 4 |
+| `src/lib/onyx/health-checker.ts` | Check Onyx responsiveness, return OnyxHealthStatus |
+| `src/app/api/onyx/search/route.ts` | POST — KB query endpoint |
+| `src/app/api/onyx/health/route.ts` | GET — Onyx status endpoint |
+| `scripts/test-guide-3.ts` | Integration test script |
 
-### TypeScript Types — ✅ COMPLETE (minor gaps)
-- `ContentMapEntry` in `src/types/content-map.ts`: 23 fields present
-- `ArticleType`: `"hub" | "spoke" | "news"` ✅
-- `ArticleStatus`: `"planned" | "drafting" | "finalized" | "published" | "needs_update"` ✅
-- `ApiResponse`, `ApiSuccess`, `ApiError`, `ErrorCode` in `src/types/api.ts` ✅
-- Barrel export in `src/types/index.ts` re-exports all 9 modules ✅
+### Pre-existing Types (DO NOT redefine — already in `src/types/onyx.ts`)
+```typescript
+export interface OnyxSearchResult {
+  documentId: string;
+  content: string;
+  sourceDocument: string; // Filename or document title
+  score: number;
+  metadata: Record<string, unknown>;
+}
 
-### Auth Helpers — ✅ COMPLETE
-- `requireAuth()` — throws `AUTH_REQUIRED` if no session
-- `requireRole(...roles)` — throws `AUTH_FORBIDDEN` if role not in list
-- Both in `src/lib/auth/session.ts`, working as expected
+export interface OnyxContext {
+  query: string;
+  results: OnyxSearchResult[];
+  totalResults: number;
+  searchTimeMs: number;
+}
 
-### DB Client — ✅ COMPLETE
-- `prisma` singleton in `src/lib/db/index.ts`
-- `retryDatabaseOperation` in `src/lib/db/retry.ts` (used for auth only, not CRUD)
+export interface OnyxHealthStatus {
+  healthy: boolean;
+  indexedDocuments: number | null;
+  lastIndexTime: string | null;
+  responseTimeMs: number;
+}
+```
 
-### Database State — ✅ CLEAN
-- `content_map`: 0 rows (ready for Guide 2 to seed)
-- `internal_links`: 0 rows (ready for core page seeding)
-- `users`: 1 row (admin user seeded by Guide 1)
-
----
-
-## 4. Dependencies Missing or Mismatched
-
-### ⚠️ NPM Package Missing: `papaparse`
-- **Impact:** Blocks the CSV import route (`/api/content-map/import`)
-- **Fix:** `npm install papaparse && npm install -D @types/papaparse`
-- **Must be done** before implementing the import endpoint
-
-### Minor Type Gaps (non-blocking)
-
-| Gap | Severity | Action |
-|---|---|---|
-| `ContentMapEntry` missing `createdAt` and `updatedAt` | LOW | Add to `src/types/content-map.ts` |
-| No `InternalLinkEntry` TypeScript interface | LOW | Create in `src/types/content-map.ts` if Guide 2 returns internal link data |
-
-### No Other Deviations
-- All file paths match orchestration doc predictions
-- No broken imports anywhere in codebase
-- No type mismatches between Prisma models and TypeScript interfaces beyond the noted timestamp omission
+### Pre-existing Error Code (in `src/types/api.ts`)
+`ONYX_UNAVAILABLE` — already registered in the `ErrorCode` union type.
 
 ---
 
-## 5. Established Patterns to Follow
+## 3. Onyx CE Live Instance — Verified State
 
-### API Route Handler Template
-*(Exact code from `src/app/api/users/route.ts`)*
+### Connectivity Results
+| Check | Result |
+|-------|--------|
+| Base URL reachable | `https://rmoss-onyx.xyz` — HTTP 200 in ~102ms |
+| Health endpoint | `GET /api/health` → `{"success":true,"message":"ok","data":null}` |
+| Authentication | `Authorization: Bearer {ONYX_API_KEY}` works. `X-API-Key` does NOT work (403). |
+| API key role | `basic` — NOT admin/curator. Some admin endpoints return 403. |
+| Embedding model | nomic-embed-text-v1 (768 dims) — configured and working |
+| Google Drive connector | Exists (id=6, source=google_drive) — connected to BWC KB folder |
+| Indexed sources | `["google_drive"]` |
+| Document sets | `[]` (none defined) |
+| Version | Onyx v2.12.1 |
 
-```ts
+### RESOLVED: LLM Provider Now Configured
+Claude LLM has been enabled in the Onyx admin UI. The `/api/chat/send-chat-message` endpoint now returns full answers with retrieved documents and citations. Response time is 18-35s for chat-with-LLM responses.
+
+**Note for Guide 3:** We still prefer `skip_gen_ai_answer_generation: true` for the client library — we only need the retrieved document chunks, not Onyx's synthesized answer. Guide 5 uses Claude directly for synthesis. Using `skip_gen_ai` is faster (~5s vs 18-35s) and avoids double-LLM overhead.
+
+### RESOLVED: API Key Elevated to Admin
+The API key now has admin role. `POST /api/admin/search` returns HTTP 200 with ranked document results (16 docs for "Bajo vineyard elevation" query, top score 6.42, ~2.6s response time). `POST /api/manage/admin/connector/indexing-status` also works — reports 33 documents indexed, last successful index run 2026-03-02.
+
+### Environment Variable Issue
+`.env.local` has `ONYX_BASE_URL=http://localhost:8080` — must be corrected to `https://rmoss-onyx.xyz`. The `.env.example` already has the correct value.
+
+---
+
+## 4. Onyx API Contract (from OpenAPI spec)
+
+### Strategy: Two API Approaches Available
+
+**Approach A: Admin search (RECOMMENDED — NOW AVAILABLE)**
+`POST /api/admin/search` — simple request/response, ~2.6s, returns ranked `SearchDoc[]` directly. No chat session management needed. Requires admin API key (now configured).
+
+**Approach B: Chat-based retrieval (FALLBACK)**
+Uses the chat session flow with `skip_gen_ai_answer_generation: true`. Streaming NDJSON, ~5s, more complex parsing. Use if admin search is insufficient or if we need Onyx's auto-generated sub-queries.
+
+### Approach A: Chat-Based Retrieval Flow
+
+#### Step 1: Create Chat Session
+```
+POST /api/chat/create-chat-session
+Authorization: Bearer {ONYX_API_KEY}
+Body: { "persona_id": 0 }
+Response: { "chat_session_id": "uuid-string" }
+```
+
+#### Step 2: Send Message (with retrieval, skip LLM)
+```
+POST /api/chat/send-message
+Authorization: Bearer {ONYX_API_KEY}
+Body: {
+  "chat_session_id": "uuid-from-step-1",
+  "parent_message_id": null,
+  "message": "What is the elevation of Bajo vineyard?",
+  "search_doc_ids": null,
+  "retrieval_options": {
+    "run_search": "always",
+    "real_time": true,
+    "filters": null,
+    "dedupe_docs": true
+  },
+  "skip_gen_ai_answer_generation": true
+}
+```
+
+Response is a **streaming NDJSON** response. Each line is a JSON object. Document results appear as `SearchDoc` objects in the stream.
+
+#### Alternative: Non-streaming endpoint
+```
+POST /api/chat/send-chat-message
+Authorization: Bearer {ONYX_API_KEY}
+Body: {
+  "message": "What is the elevation of Bajo vineyard?",
+  "chat_session_id": null,
+  "chat_session_info": { "persona_id": 0 },
+  "stream": false,
+  "include_citations": true
+}
+```
+Returns `ChatFullResponse`:
+```typescript
+{
+  answer: string;
+  answer_citationless: string;
+  top_documents: SearchDoc[];
+  citation_info: CitationInfo[];
+  message_id: number;
+  chat_session_id: string | null;
+  error_msg: string | null;
+}
+```
+
+### SearchDoc Schema (what Onyx returns per document chunk)
+```typescript
+interface OnyxSearchDoc {
+  document_id: string;       // → maps to OnyxSearchResult.documentId
+  chunk_ind: number;
+  semantic_identifier: string; // → maps to OnyxSearchResult.sourceDocument
+  link: string | null;
+  blurb: string;              // → maps to OnyxSearchResult.content
+  source_type: string;        // e.g., "google_drive"
+  boost: number;
+  hidden: boolean;
+  metadata: Record<string, string | string[]>;
+  score: number | null;       // → maps to OnyxSearchResult.score
+  is_relevant: boolean | null;
+  relevance_explanation: string | null;
+  match_highlights: string[];
+  updated_at: string | null;  // ISO datetime
+  primary_owners: string[] | null;
+  secondary_owners: string[] | null;
+  is_internet: boolean;       // default false
+}
+```
+
+### BaseFilters Schema
+```typescript
+interface BaseFilters {
+  source_type?: string[] | null;  // e.g., ["google_drive"]
+  document_set?: string[] | null;
+  time_cutoff?: string | null;    // ISO datetime
+  tags?: Tag[] | null;
+}
+```
+
+### RetrievalDetails Schema
+```typescript
+interface RetrievalDetails {
+  chunks_above?: number | null;
+  chunks_below?: number | null;
+  full_doc?: boolean;            // default false
+  run_search?: "always" | "never" | "auto";  // default "auto"
+  real_time?: boolean;           // default true
+  filters?: BaseFilters | null;
+  enable_auto_detect_filters?: boolean | null;
+  offset?: number | null;
+  limit?: number | null;
+  dedupe_docs?: boolean;         // default false
+}
+```
+
+---
+
+## 5. Established Codebase Patterns
+
+### API Route Handler Pattern
+From `src/app/api/content-map/route.ts` (canonical example):
+
+```typescript
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth/session";
-import { z } from "zod";
-
-const CreateResourceSchema = z.object({
-  // fields...
-});
 
 export async function GET() {
   try {
-    await requireRole("admin", "editor");  // or requireAuth()
-    const items = await prisma.contentMap.findMany({
-      select: { /* explicit fields */ },
-      orderBy: { createdAt: "desc" },
-    });
-    return NextResponse.json({ success: true, data: items });
+    await requireRole("admin", "editor", "viewer");
+    // ... business logic ...
+    return NextResponse.json({ success: true, data: result });
   } catch (error) {
-    // standard catch block (see below)
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    await requireRole("admin", "editor");
-    const body = await request.json();
-    const parsed = CreateResourceSchema.safeParse(body);
-    if (!parsed.success) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    if (message === "AUTH_REQUIRED") {
       return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Invalid input", details: parsed.error.flatten() } },
-        { status: 400 }
+        { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
+        { status: 401 }
       );
     }
-    const result = await prisma.contentMap.create({
-      data: { /* from parsed.data */ },
-      select: { /* explicit fields */ },
-    });
-    return NextResponse.json({ success: true, data: result }, { status: 201 });
-  } catch (error) {
-    // standard catch block
+    if (message === "AUTH_FORBIDDEN") {
+      return NextResponse.json(
+        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
+        { status: 403 }
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: { code: "INTERNAL_ERROR", message } },
+      { status: 500 }
+    );
   }
 }
 ```
 
-### Standard Catch Block (copy-identical across all routes)
-```ts
-} catch (error) {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  if (message === "AUTH_REQUIRED") {
-    return NextResponse.json(
-      { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
-      { status: 401 }
-    );
-  }
-  if (message === "AUTH_FORBIDDEN") {
-    return NextResponse.json(
-      { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
-      { status: 403 }
-    );
-  }
+**Guide 3 addition:** Add `ONYX_UNAVAILABLE` error handling at HTTP 503:
+```typescript
+if (message === "ONYX_UNAVAILABLE") {
   return NextResponse.json(
-    { success: false, error: { code: "INTERNAL_ERROR", message } },
-    { status: 500 }
+    { success: false, error: { code: "ONYX_UNAVAILABLE", message: "Knowledge base unavailable" } },
+    { status: 503 }
   );
 }
 ```
 
-### Dynamic Route [id] Parameter Pattern (Next.js 15)
-```ts
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    await requireRole("admin", "editor");
-    const { id } = await params;
-    const item = await prisma.contentMap.findUnique({
-      where: { id: parseInt(id, 10) },
-      select: { /* fields */ },
-    });
-    if (!item) {
-      return NextResponse.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Content map entry not found" } },
-        { status: 404 }
-      );
+### Retry Pattern (model from `src/lib/db/retry.ts`)
+```typescript
+export async function retryDatabaseOperation<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 500
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const isRetryable = /* check error message patterns */;
+      if (!isRetryable || attempt === maxRetries) throw lastError;
+      const delay = baseDelay * Math.pow(2, attempt);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-    return NextResponse.json({ success: true, data: item });
-  } catch (error) {
-    // standard catch block
   }
+  throw lastError;
 }
 ```
+Guide 3 should build `retryOnyxRequest` in `src/lib/onyx/client.ts` following this pattern, with HTTP-specific retryable conditions (timeout, ECONNRESET, 502, 503, 504).
 
-### Zod Schema Pattern
-- Naming: `[Action][Resource]Schema` (e.g., `CreateContentMapSchema`, `UpdateContentMapSchema`)
-- Defined inline at top of route file, NOT in separate files
-- Always `.safeParse()`, never `.parse()`
-- `parsed.error.flatten()` for details on validation failure
+### Environment Accessor Pattern (`src/lib/env.ts`)
+Currently has `ONYX_API_URL` and `ONYX_API_KEY` but is missing `ONYX_BASE_URL`, `ONYX_INDEX_NAME`, and `ONYX_SEARCH_TIMEOUT_MS`. The existing stub in `src/lib/onyx/client.ts` reads `process.env` directly. Guide 3 should add missing vars to `env.ts`.
 
-### Prisma Query Pattern
-- Always use `select` — never return full records
-- Integer IDs: `parseInt(id, 10)`
-- Import from `@/lib/db`, never from `@prisma/client` directly
-- No retry wrapper for CRUD routes (retry only used for auth login)
-
-### Seed Script Pattern
-```ts
+### Test Script Pattern (from `scripts/test-guide-2.ts`)
+```typescript
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
-async function main() {
-  // Existing admin user upsert...
-  // Guide 2 adds: content map upserts + core page inserts
+async function test() {
+  let passed = 0;
+  let failed = 0;
+
+  function check(name: string, result: boolean, detail?: string) {
+    if (result) { console.log(`  PASS ${name}`); passed++; }
+    else { console.log(`  FAIL ${name}${detail ? ` — ${detail}` : ""}`); failed++; }
+  }
+
+  console.log("\n=== Guide N Integration Tests ===\n");
+  // ... test sections ...
+  console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
+  await prisma.$disconnect();
+  process.exit(failed > 0 ? 1 : 0);
 }
 
-main()
-  .catch((e) => { console.error("Seed failed:", e); process.exit(1); })
-  .finally(async () => { await prisma.$disconnect(); });
+test();
 ```
-- Uses local `new PrismaClient()` (not the singleton)
-- Idempotency via `upsert`
-- Environment variable fallbacks
 
-### Response Format
-| Scenario | HTTP Status | Body Shape |
-|---|---|---|
-| Success (GET/PATCH/DELETE) | 200 | `{ success: true, data: T }` |
-| Success (POST create) | 201 | `{ success: true, data: T }` |
-| Validation error | 400 | `{ success: false, error: { code: "VALIDATION_ERROR", message, details } }` |
-| Not authenticated | 401 | `{ success: false, error: { code: "AUTH_REQUIRED", message } }` |
-| Not authorized | 403 | `{ success: false, error: { code: "AUTH_FORBIDDEN", message } }` |
-| Not found | 404 | `{ success: false, error: { code: "NOT_FOUND", message } }` |
-| Duplicate/conflict | 409 | `{ success: false, error: { code: "VALIDATION_ERROR", message } }` |
-| Server error | 500 | `{ success: false, error: { code: "INTERNAL_ERROR", message } }` |
+Guide 3 test script won't need Prisma (stateless retrieval layer). It needs `fetch` calls to the Onyx API and optionally to the local dev server API routes.
 
 ---
 
-## 6. Integration Readiness
+## 6. Key Architectural Decisions
 
-| External Service | Guide 2 Needs It? | Status |
-|---|---|---|
-| Neon Postgres | ✅ YES | ✅ Verified — 9 tables, 1 admin user, 0 content_map rows |
-| NextAuth | ✅ YES (route protection) | ✅ Verified — auth configured and working |
-| Onyx CE | ❌ No | Skipped |
-| Claude API | ❌ No | Skipped |
-| Cloudinary | ❌ No | Skipped |
+### 6A. Primary: Admin Search Endpoint
+Now that the API key has admin role, `POST /api/admin/search` is the simplest and fastest path:
+- **~2.6s response time** (vs 5s streaming or 18-35s with LLM)
+- Simple request/response — no chat session management, no stream parsing
+- Returns ranked `SearchDoc[]` directly with scores, blurbs, match highlights, and source attribution
+- Request: `{ "query": "string", "filters": {} }`
+- Response: `{ "documents": SearchDoc[] }`
 
-No known quirks for Guide 2's services. Neon connection is stable, Prisma client is working.
+### 6B. Fallback: Chat-based retrieval with `skip_gen_ai_answer_generation: true`
+If admin search proves insufficient (e.g., we want Onyx's auto-generated sub-queries), the chat path is available:
+- Create session → send message with `skip_gen_ai_answer_generation: true`
+- Streaming NDJSON, ~5s for document results
+- Onyx auto-generates multiple search queries (e.g., "Bajo vineyard elevation", "Bajo vineyard altitude", "Bajo vinedo elevacion")
+- More complex to parse but richer retrieval behavior
 
----
+### 6B-alt. NOT recommended: Full LLM chat
+`POST /api/chat/send-chat-message` with LLM generation works but takes 18-35s and we don't need Onyx's answer — Guide 5 uses Claude directly for synthesis.
 
-## 7. Risks and Blockers
+### 6C. Multiple Focused Queries
+Per the spec: "Structured query strategy: multiple focused queries per article rather than one broad query." The query builder should accept an article brief (title, mainEntity, supportingEntities, targetKeywords) and generate 3-5 focused questions, e.g.:
+- Factual data: "What is the elevation and soil type at {vineyard}?"
+- Winemaker notes: "What are the winemaker's notes on {variety} from {vineyard}?"
+- Press coverage: "What press coverage exists for {entity}?"
+- Brand context: "What is the brand story related to {topic}?"
 
-### Blocker: `papaparse` not installed
-- **Severity:** BLOCKS CSV import feature
-- **Fix:** `npm install papaparse && npm install -D @types/papaparse`
-- **When:** Must be done as the first step of Guide 2
-
-### Risk: Slug uniqueness collisions
-- Prisma schema has `slug String? @unique` on ContentMap
-- CSV data has 39 rows — some could generate similar slugs
-- **Mitigation:** Slug generation must handle collisions (append `-2`, `-3` suffix)
-
-### Risk: Parent hub ID assignment ordering
-- Spoke articles reference their hub's `parent_hub_id`
-- Hub articles must be inserted FIRST to get their IDs before spokes can reference them
-- **Mitigation:** Import logic must process hubs first, then spokes with FK assignment
-
-### Risk: CSV parsing edge cases
-- CSV has semicolon-delimited arrays within cells (keywords, links)
-- Some cells contain commas within values (e.g., content notes)
-- **Mitigation:** PapaParse handles quoted CSV cells; semicolon splitting needs explicit handling
-
-### Non-blocking Deprecation Warnings
-- `package.json#prisma` seed config deprecated in Prisma 7 — migrate to `prisma.config.ts` before upgrading
-- `middleware.ts` convention deprecated in Next.js 16 — rename to `proxy` if upgrading
-- Neither impacts Guide 2 execution
-
----
-
-## 8. Deviations from Plan
-
-**No significant deviations found.** The codebase matches the orchestration doc's predictions:
-
-- All file paths are where expected
-- All Prisma models have the expected fields
-- All TypeScript types match the shared contracts
-- All API routes follow the predicted patterns
-- No migration files exist (using `prisma db push` as noted)
-
-Minor deviations:
-- `ContentMapEntry` TypeScript interface omits `createdAt`/`updatedAt` (Prisma model has them) — trivial fix
-- `UserRole` is duplicated in `src/types/auth.ts` and `src/lib/auth/session.ts` — pre-existing, not caused by Guide 1 drift
-- No `InternalLinkEntry` TypeScript interface — may need to create one if Guide 2 returns link data from API
-
----
-
-## 9. CSV Data Summary
-
-**Source file:** `BWC content (hubs and spokes) - bhutan-winery-seo-content-map.csv` (in Downloads folder)
-**Rows:** 39 (7 hubs + 32 spokes)
-**Columns:** 10
-
-### Hub Distribution
-
-| Hub | Spokes | Total |
-|---|---|---|
-| The Complete Guide to Bhutan Wine | 6 | 7 |
-| Emerging Wine Regions | 4 | 5 |
-| High-Altitude Viticulture | 3 | 4 |
-| The Art of Sustainable Winemaking | 4 | 5 |
-| The Ultimate Guide to Luxury Travel in Bhutan | 5 | 6 |
-| The Story of Wine in Bhutan | 4 | 5 |
-| Wine Tourism Beyond Europe | 2 | 3 |
-| Bhutan: The World's Most Exclusive Travel Destination | 3 | 4 |
-| **Total** | **31** | **39** |
-
-### CSV Column → DB Column Mapping (from Appendix C)
-
-| CSV Column | DB Column | Transform |
-|---|---|---|
-| Hub Article | hubName | Direct |
-| Article Type | articleType | Lowercase: "Hub" → "hub", "Spoke" → "spoke" |
-| Spoke Article Title | title | Use this if present; else use Hub Article as title |
-| Target Keywords | targetKeywords | Split on `;`, trim → String[] |
-| Search Volume Est. | searchVolumeEst | Map "Low"→100, "Medium"→500, "High"→2000 |
-| Difficulty | keywordDifficulty | Lowercase |
-| Target Audience | targetAudience | Direct |
-| Internal Links To | internalLinksTo | Split on `;`, trim → String[] |
-| Suggested External Source Links | suggestedExternalLinks | Split on `;`, trim → String[] |
-| Content Notes | contentNotes | Direct |
-
-### Derived columns
-- `slug`: Generated from title (lowercase, hyphenated, stop words removed, 3–6 words)
-- `mainEntity`: First target keyword
-- `supportingEntities`: Remaining target keywords
-- `parentHubId`: FK to matching hub row (null for hubs)
-- `status`: "planned"
-- `source`: "engine"
-
-### Core Pages to Seed (10 entries in `internal_links`)
-
+### 6D. Context Assembly for Layer 4
+The context assembler takes `OnyxSearchResult[]` and formats them into a structured string for the system prompt:
 ```
-https://www.bhutanwine.com/the-grapes-vineyards
-https://www.bhutanwine.com/our-wine
-https://www.bhutanwine.com/our-wine-2023-first-barrel
-https://www.bhutanwine.com/first-release
-https://www.bhutanwine.com/visit-us
-https://www.bhutanwine.com/about-us
-https://www.bhutanwine.com/in-the-news
-https://www.bhutanwine.com/gallery
-https://www.bhutanwine.com/2024-inquiry-request
-https://www.bhutanwine.com/contact-us
+=== Knowledge Base Context ===
+Source: Vineyard Master Data.gsheet
+Relevance: 0.89
+> The Bajo vineyard sits at 1,200m elevation with sandy loam soil...
+
+Source: 2024 Vintage Portfolio.gdoc
+Relevance: 0.82
+> The 2024 Merlot from Bajo shows exceptional...
 ```
+
+### 6E. Chat Session Management
+Each search operation creates a new chat session (stateless from our perspective). No session reuse across requests — keeps the client simple and avoids stale state.
+
+---
+
+## 7. Validation Gates
+
+### Gate 1: Lint and Type Check
+```bash
+npx tsc --noEmit          # Zero type errors
+npx next lint              # Zero lint errors
+```
+
+### Gate 2: Integration Test
+`npx tsx scripts/test-guide-3.ts` must pass. Tests:
+1. Onyx health endpoint returns healthy status
+2. Search endpoint returns results for "Bajo vineyard elevation"
+3. Results contain source attribution (sourceDocument field)
+4. Response includes search timing (searchTimeMs)
+5. API routes respond correctly (if dev server running)
+
+### Gate 3: Human Checkpoint
+- Onyx health endpoint returns status
+- Search endpoint returns KB results for "Bajo vineyard elevation"
+- Verify KB results contain actual vineyard data from Google Drive
+
+---
+
+## 8. Open Questions / Pre-Build Checklist
+
+### Resolved
+- [x] **LLM Provider**: Claude LLM enabled in Onyx admin UI. Chat endpoints now return full answers.
+- [x] **API Key Role**: Elevated to admin. `POST /api/admin/search` now works (HTTP 200, ~2.6s).
+- [x] **Indexing Status**: Google Drive connector active, 33 documents indexed, last run 2026-03-02.
+
+### Must Resolve Before Building
+- [ ] **Fix `.env.local`**: Change `ONYX_BASE_URL` from `http://localhost:8080` to `https://rmoss-onyx.xyz`
+
+### Nice to Have
+- [ ] Create a document set in Onyx to scope searches to KB folder only
+
+---
+
+## 9. Env Vars Summary
+
+### Already in `.env.example` (no changes needed)
+```
+ONYX_BASE_URL=https://rmoss-onyx.xyz
+ONYX_API_URL=https://rmoss-onyx.xyz/api
+ONYX_API_KEY=your-onyx-api-key
+ONYX_INDEX_NAME=default
+ONYX_SEARCH_TIMEOUT_MS=10000
+```
+
+### Need to Add to `src/lib/env.ts`
+```typescript
+ONYX_BASE_URL: optionalEnv('ONYX_BASE_URL', ''),
+ONYX_INDEX_NAME: optionalEnv('ONYX_INDEX_NAME', 'default'),
+ONYX_SEARCH_TIMEOUT_MS: optionalEnv('ONYX_SEARCH_TIMEOUT_MS', '10000'),
+```
+
+---
+
+## 10. Verified Timing Data
+
+| Endpoint | Response Time | Notes |
+|----------|--------------|-------|
+| `GET /api/health` | ~100ms | Fast, reliable |
+| `POST /api/admin/search` | ~2.6s | Primary search path |
+| `POST /api/chat/create-chat-session` | 0.4s–55s | Cold start can be very slow |
+| `POST /api/chat/send-message` (skip LLM) | ~5s first chunk | Streaming NDJSON |
+| `POST /api/chat/send-chat-message` (with LLM) | 18–35s | Full body arrives after streaming completes |
+| `POST /api/manage/admin/connector/indexing-status` | ~0.5s | Must use POST, not GET |
+
+**Key finding:** Admin search (~2.6s) is 2-14x faster than chat-based approaches. Use it as the primary path.
+
+---
+
+## 11. Risk Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Onyx slow/unresponsive (4GB droplet) | 15s timeout for admin search, 60s for chat endpoints; retry with exponential backoff (500ms, 1s, 2s) |
+| Onyx cold start after idle (up to 55s for chat session creation) | Retry logic with generous timeouts; prefer admin search which has no cold-start issue |
+| Double-LLM overhead | Use `skip_gen_ai_answer_generation: true` or admin search — only retrieve docs, don't ask Onyx to synthesize |
+| Google Drive not yet indexed | Health endpoint reports indexedDocuments count (currently 33); test script checks this |
+| Onyx completely down | Return `ONYX_UNAVAILABLE` error; Guide 5 handles graceful degradation (generate without KB context) |
