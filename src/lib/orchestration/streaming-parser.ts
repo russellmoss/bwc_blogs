@@ -17,7 +17,7 @@ export interface ParseResult {
  *
  * After extraction, normalizes the shape if Claude used a `metadata` wrapper.
  */
-export function parseGenerationResponse(rawText: string, articleId?: number): ParseResult {
+export function parseGenerationResponse(rawText: string, articleId?: number, articleType?: string): ParseResult {
   const trimmed = rawText.trim();
   let conversationReply = "";
 
@@ -50,7 +50,7 @@ export function parseGenerationResponse(rawText: string, articleId?: number): Pa
   let obj = extracted.parsed;
 
   // Normalize: if Claude wrapped fields in a `metadata` object, flatten them up
-  obj = normalizeDocument(obj, articleId);
+  obj = normalizeDocument(obj, articleId, articleType);
 
   if (isCanonicalDoc(obj)) {
     console.log("[streaming-parser] SUCCESS — document extracted and validated");
@@ -137,7 +137,7 @@ function extractJson(text: string): { parsed: Record<string, unknown>; conversat
  * Claude sometimes wraps title/slug/meta fields in a `metadata` object instead
  * of placing them at the top level. This flattens that structure.
  */
-function normalizeDocument(obj: Record<string, unknown>, articleId?: number): Record<string, unknown> {
+function normalizeDocument(obj: Record<string, unknown>, articleId?: number, articleType?: string): Record<string, unknown> {
   // If the doc already has `title` and `articleId` at top level, it's fine
   if (typeof obj.title === "string" && typeof obj.articleId === "number") {
     return obj;
@@ -237,6 +237,13 @@ function normalizeDocument(obj: Record<string, unknown>, articleId?: number): Re
       console.log("[streaming-parser] Injecting articleId from request:", articleId);
       result.articleId = articleId;
     }
+  }
+
+  // If articleType is still missing, inject from request
+  const validArticleTypes = ["hub", "spoke", "news"];
+  if (!validArticleTypes.includes(result.articleType as string) && articleType && validArticleTypes.includes(articleType)) {
+    console.log("[streaming-parser] Injecting articleType from request:", articleType);
+    result.articleType = articleType;
   }
 
   // Handle `captureComponent` (singular) -> map to ctaType and captureComponents

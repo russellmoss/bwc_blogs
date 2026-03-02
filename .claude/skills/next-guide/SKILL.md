@@ -1,209 +1,120 @@
 ---
-name: build-guide
-description: "Build an agentic implementation guide from exploration results. Use after /next-guide exploration completes. Creates a phased, validation-gated guide that a Claude Code agent can execute step-by-step. The guide is specific to the BWC Content Engine architecture."
+name: next-guide
+description: "Prepare for the next BWC Content Engine implementation guide. Use after a guide completes and passes its gates. Spawns an agent team to inspect the codebase state, verify integrations, and find established patterns — then synthesizes findings into an exploration report that feeds the build-guide skill."
 ---
 
-# Build BWC Implementation Guide
+# Next Guide Preparation — Parallel Codebase Inspection
 
-You are building an implementation guide from completed exploration results. The guide must be executable by a single Claude Code agent working phase-by-phase with human checkpoints.
+You are preparing the exploration needed to build the next BWC Content Engine implementation guide. The previous guide has been executed by a Claude Code agent and (ideally) passed its gate checks. Your job is to inspect the ACTUAL codebase state and produce a comprehensive report.
 
-## Prerequisites
+## Step 1: Identify Which Guide Is Next
 
-Before starting, verify that these files exist in the project root:
-- `exploration-results.md` (synthesized findings from /next-guide)
-- `code-inspector-findings.md`
-- `integration-verifier-findings.md`
-- `pattern-finder-findings.md`
+Read the Master Orchestration Doc at `BWC-Master-Orchestration-Doc.md` in the project root.
 
-Read ALL of them. The exploration results are the primary source, but the raw findings files contain exact line numbers, code snippets, and edge cases you'll need.
+Check §4 (Build Order — dependency graph) and §7 (Guide Specifications) to identify:
+- Which guide was just completed? (Check `code-inspector-findings.md` from last run if it exists, or ask the user)
+- Which guide(s) are next according to the dependency graph?
+- What does the next guide need to produce? (files, routes, types, components — from §7)
+- What shared contracts does it reference? (from §5)
+- What files does it own? (from §5E)
 
-Also read:
-- `BWC-Master-Orchestration-Doc.md` — §7 has the guide spec, §5 has shared contracts, §6 has gate protocol
-- `BWC-Content-Engine-System-Architecture.md` — the sections relevant to this guide's subsystem
+Also read the full system architecture doc at `BWC-Content-Engine-System-Architecture.md` — find the sections relevant to the next guide's subsystem.
 
-## Guide Structure
+## Step 2: Create Agent Team
 
-Create the guide as `guide-[N]-[name].md` in the project root (e.g., `guide-4-article-schema-renderer.md`).
+Spawn an agent team with 3 teammates:
 
-### Header Section
+### Teammate 1: Code Inspector (use code-inspector agent)
 
-```markdown
-# Guide [N]: [Subsystem Name]
+Investigate:
+- What TypeScript types currently exist in `src/types/`? List every interface with its fields.
+- What API routes exist? List every `route.ts` with its HTTP methods.
+- What Prisma models exist and what are their current fields?
+- What library modules exist in `src/lib/`? What do they export?
+- What components exist in `src/components/`?
+- Cross-reference against orchestration doc §5C (API routes) and §5E (file ownership): what files does the NEXT guide need to create? Which of its dependencies already exist?
+- Are there type mismatches between Prisma models and TypeScript interfaces?
+- Are there imports that reference modules or types that don't exist yet? (These are integration points the next guide must fulfill.)
+- Save findings to `code-inspector-findings.md` in the project root.
 
-## Reference Documents
-- BWC-Master-Orchestration-Doc.md §7 (Guide [N] spec)
-- BWC-Content-Engine-System-Architecture.md §[X] (relevant sections)
-- exploration-results.md (codebase state at time of writing)
+### Teammate 2: Integration Verifier (use integration-verifier agent)
 
-## What This Guide Builds
-[1-2 sentence summary of the subsystem and why it exists]
+Investigate:
+- Run Tier 1 checks: Neon connection, `npm run build`, `npm run dev` starts, health endpoint.
+- Run Tier 2 checks relevant to the next guide's dependencies:
+  - If next guide needs Onyx (Guide 3, 5): verify Onyx is reachable and returning KB results
+  - If next guide needs Claude API (Guide 5): verify API key, streaming, web search tool
+  - If next guide needs Cloudinary (Guide 9): verify upload and CDN delivery
+- Check database state: how many rows in each table? Is seeded data correct?
+- If the last guide introduced new API routes, hit them and verify they respond correctly.
+- Save findings to `integration-verifier-findings.md` in the project root.
 
-## Scope
-**In scope:** [specific list]
-**Out of scope:** [what this guide does NOT touch]
+### Teammate 3: Pattern Finder (use pattern-finder agent)
 
-## Depends On
-[List of completed guides this one requires, confirmed by exploration results]
+Investigate:
+- What implementation patterns have been established by previous guides?
+- Specifically look at patterns relevant to the NEXT guide:
+  - If next guide creates API routes → find the existing route handler pattern
+  - If next guide creates lib modules → find the existing module structure pattern
+  - If next guide creates components → find the existing component pattern
+  - If next guide calls external services → find the existing service call pattern
+- Are there any inconsistencies between files that should follow the same pattern?
+- What patterns should the next guide follow for consistency?
+- Save findings to `pattern-finder-findings.md` in the project root.
 
-## Files Created / Modified
-[Explicit list of every file this guide will create or modify, with ownership confirmation from §5E]
+## Step 3: Synthesize Results
 
-## Pre-Flight Checklist
-npm run build 2>&1 | tail -20
-npx tsc --noEmit 2>&1 | tail -20
-If pre-existing errors, STOP and report. Do not proceed with a broken baseline.
-```
+Once all teammates complete, read all three findings files and produce `exploration-results.md` containing:
 
-### Phase Pattern
+### Sections:
 
-Every phase follows this template:
+1. **Current Build State**
+   - Which guides are complete (infer from what exists)
+   - Summary inventory: N tables, M routes, K types, J components, L lib modules
+   - Integration health: which services are connected and verified working
 
-```markdown
-## PHASE N: [Title]
+2. **Next Guide Target**
+   - Guide number and title (from orchestration doc §7)
+   - What the orchestration doc says it should produce (files, routes, types)
+   - Relevant architecture doc sections to reference during guide construction
 
-### Context
-[Why this phase exists, what it does, which files are affected]
+3. **Dependencies Satisfied**
+   - Shared contracts the next guide needs — and whether they exist (with field-level detail)
+   - Library modules the next guide will import — and whether they exist
+   - Database tables the next guide will query — and whether they have data
+   - External services the next guide needs — and their verified status
 
-### Step N.1: [Specific action]
-**File**: `[exact path]`
-**Action**: Create / Modify
+4. **Dependencies Missing or Mismatched**
+   - Types that need extending (new fields needed on existing interfaces)
+   - Modules that the next guide expects but don't exist
+   - Any deviation between the orchestration doc's predictions and the actual codebase
 
-[Exact code to add/change. For new files, show the complete file content.
-For modifications, show the specific section with before/after context.]
+5. **Established Patterns to Follow**
+   - API route handler template (exact code snippet from an existing working route)
+   - Error handling pattern (exact format)
+   - Validation pattern (Zod usage)
+   - Any service-specific patterns relevant to the next guide
+   - Import conventions (exact examples)
 
-### Step N.2: [Next action]
-...
+6. **Integration Readiness**
+   - Which external services the next guide touches
+   - Their current status: ✅ verified / ⚠️ needs config / ❌ unavailable
+   - Known quirks (Onyx response time, Claude streaming format, Cloudinary signed uploads, etc.)
 
-### PHASE N — VALIDATION GATE
-```bash
-# Type check
-npx tsc --noEmit 2>&1 | tail -20
-# Lint
-npx next lint 2>&1 | tail -20
-# Prisma validation (if schema changed)
-npx prisma validate 2>&1
-# Pattern-specific checks
-grep -r "expectedPattern" src/path/ | head -10
-```
+7. **Risks and Blockers**
+   - Services that are down or misconfigured
+   - Type mismatches that need resolving first
+   - Pattern inconsistencies that should be fixed before adding more code
+   - Missing environment variables
 
-**Expected output**: [What the commands should show]
+8. **Deviations from Plan**
+   - Specific ways the actual codebase differs from the orchestration doc's predictions
+   - The build-guide skill MUST know about these to produce an accurate guide
 
-**STOP AND REPORT**: Tell the user:
-- "[Summary of what Phase N accomplished]"
-- "[Error count: X type errors, Y lint warnings]"
-- "[What Phase N+1 will do]"
-- "Ready to proceed?"
-```
+## Step 4: Present to User
 
-### Standard Phase Order for BWC Guides
-
-The exact phases depend on which guide is being built, but follow this general order:
-
-**Phase 1: Types & Schema (if applicable)**
-- Add or extend TypeScript interfaces in `src/types/`
-- Update Prisma schema if new models/fields needed (rare after Guide 1 — all tables already exist)
-- Run `npx prisma generate` if schema changed
-- This phase may intentionally break the build by adding required fields — TypeScript errors become the Phase 2+ checklist
-
-**Phase 2: Core Library Module(s)**
-- Create the main business logic in `src/lib/[subsystem]/`
-- Follow the established patterns found by pattern-finder (exact code snippets from existing modules)
-- Include: exports, error handling, types, validation
-- For modules that call external services: include timeout, retry, error classification
-- Wire up imports to shared types
-
-**Phase 3: API Route(s)**
-- Create route handlers in `src/app/api/[subsystem]/`
-- Follow the EXACT pattern from the pattern-finder findings:
-  - Auth check (same approach as existing routes)
-  - Input validation (Zod, same pattern)
-  - Error response format (`{ success: false, error: { code, message } }`)
-  - Success response format (`{ success: true, data }`)
-- Import from the library module created in Phase 2
-
-**Phase 4: UI Components (if applicable)**
-- Create React components in `src/components/[subsystem]/`
-- Follow existing component conventions (Tailwind for app UI, NOT for blog article output)
-- Wire up to API routes via fetch/SWR/React Query (match existing pattern)
-- Handle loading and error states consistently
-
-**Phase 5: Integration Wiring**
-- Connect the new subsystem to existing subsystems
-- Update any parent components that need to render or route to the new components
-- Wire up navigation if applicable
-- Ensure the new code is reachable from the app shell
-
-**Phase 6: Agent-Guard Sync**
-```bash
-npx agent-guard sync
-```
-Review changes to `docs/ARCHITECTURE.md` and generated inventories. Stage if correct.
-
-**Phase 7: Integration Test Script**
-- Create `scripts/test-guide-[N].ts` with automated checks
-- Test the subsystem's API routes with sample requests
-- Verify database state if applicable
-- This is the Gate 2 check from the orchestration doc §6C
-
-**Phase 8: Human Gate (Requires User)**
-- Present specific test instructions from orchestration doc §6C (Gate 3 for this guide)
-- List exactly what the user should check in the browser
-- Include curl commands for API-only guides
-
-### Critical Rules for Guide Quality
-
-1. **Use the ACTUAL codebase state, not the orchestration doc's predictions.** The exploration results show what really exists. If the orchestration doc says "Guide 2 produces `src/lib/content-map/slug.ts`" but exploration shows it's actually at `src/lib/content-map/utils.ts`, use the real path.
-
-2. **Match existing patterns exactly.** Copy the code snippets from pattern-finder findings. If existing routes use `getServerSession(authOptions)`, don't switch to `auth()`. If existing modules use `try/catch` with specific error codes, follow that exact pattern.
-
-3. **Import merges, not additions.** Always say "add X to the EXISTING import from Y" — never add a second import from the same module.
-
-4. **Show complete file contents for new files.** For files being created from scratch, include the ENTIRE file — not pseudocode or "implement the logic here" placeholders. The executing agent should be able to copy-paste.
-
-5. **Show surgical diffs for modified files.** For files being changed, show the exact code being replaced and the replacement. Include enough surrounding context (3-5 lines before and after) that the edit location is unambiguous.
-
-6. **Validation gates must have concrete commands.** Not "verify the changes" — actual bash commands (tsc, grep, curl) that produce checkable output with expected results stated.
-
-7. **Account for deviations.** The exploration results may reveal that previous guides produced code slightly different from what the orchestration doc predicted. The guide must work with the ACTUAL code, not the planned code.
-
-8. **Agent-guard sync before human validation.** Always include `npx agent-guard sync` as a phase before the human gate.
-
-9. **Include a Troubleshooting section.** Common failure modes for this specific guide — drawn from the integration-verifier's findings (service timeouts, auth issues) and the pattern-finder's inconsistency notes.
-
-### Guide-Specific Sections
-
-Depending on which guide is being built, include these additional sections:
-
-**For Guide 4 (Article Schema + Renderer):**
-- Include the complete Zod schema for CanonicalArticleDocument
-- Include a sample fixture JSON that passes validation
-- Include the complete Compiled Template CSS and component HTML patterns
-- Include renderer output examples for each content node type
-
-**For Guide 5 (Orchestration + Claude API):**
-- Include the complete system prompt assembly for each of the 7 layers
-- Include the Claude API request format with streaming and web search tool config
-- Include the response parsing logic for structured JSON extraction
-- Include the post-generation validation pipeline steps
-
-**For Guide 6 (Split-Pane UI):**
-- Include wireframe descriptions of each UI panel
-- Include the state management setup (Context/Zustand) with all state fields
-- Include the streaming render pipeline (how chunks flow from API to iframe)
-- Include the iframe communication protocol
-
-**For Guide 8 (QA Scorecard):**
-- Include every check from orchestration doc Appendix D with its implementation logic
-- Include the scoring algorithm
-- Include the overlay UI behavior spec
-
-## Output
-
-Save the guide as `guide-[N]-[name].md` in the project root.
-
-**STOP AND REPORT**: Tell the user:
-- "Implementation guide complete: `guide-[N]-[name].md`"
-- "[N] phases, [M] files to create, [K] files to modify"
-- "**Pre-execution recommendation**: Review the guide, especially Phases 1-3 which define types and core logic. Spot-check that the patterns match your existing code."
-- "When ready, open a new Claude Code session and run:"
-- "`Read guide-[N]-[name].md top to bottom. Execute each phase sequentially. Stop and report at every VALIDATION GATE. Start with Pre-Flight.`"
+Tell the user:
+- "Exploration complete for Guide [N]: [Title]."
+- "[X types, Y routes, Z services verified. Current state: Guides 1-[M] complete.]"
+- "[Any blockers: list them]"
+- "Run `/build-guide` to generate the implementation guide from these results, or investigate further."

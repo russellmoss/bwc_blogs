@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Monitor, Smartphone, Eye, Code, CheckCircle, AlertTriangle, XCircle, MessageSquare, Pencil, Undo2, Redo2 } from "lucide-react";
-import { useArticleStore, selectEffectiveValidation, selectCanUndo, selectCanRedo } from "@/lib/store/article-store";
+import { Monitor, Smartphone, Eye, Code, CheckCircle, AlertTriangle, XCircle, MessageSquare, Pencil, Undo2, Redo2, Shield } from "lucide-react";
+import { useArticleStore, selectEffectiveValidation, selectCanUndo, selectCanRedo, selectQaScore } from "@/lib/store/article-store";
 import { VersionNavigator } from "./VersionNavigator";
 
 function ToggleButton({
@@ -52,6 +52,9 @@ export function PreviewToolbar() {
   const validationResult = useArticleStore(selectEffectiveValidation);
   const canUndo = useArticleStore(selectCanUndo);
   const canRedo = useArticleStore(selectCanRedo);
+  const qaScore = useArticleStore(selectQaScore);
+  const { runQa, setIsScorecardOpen } = useArticleStore();
+  const currentDocument = useArticleStore((s) => s.currentDocument);
   const [showDetails, setShowDetails] = useState(false);
 
   // Global keyboard shortcuts for undo/redo
@@ -181,6 +184,44 @@ export function PreviewToolbar() {
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* QA Scorecard button */}
+      {currentDocument && (
+        <button
+          onClick={() => {
+            if (qaScore) {
+              setIsScorecardOpen(true);
+            }
+            runQa();
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "4px 10px",
+            borderRadius: "6px",
+            fontSize: "12px",
+            fontWeight: 500,
+            background: qaScore
+              ? qaScore.canFinalize
+                ? "#f0fdf4"
+                : "#fef2f2"
+              : "#f7f7f7",
+            color: qaScore
+              ? qaScore.canFinalize
+                ? "#15803d"
+                : "#b91c1c"
+              : "#414141",
+            border: "1px solid #cccccc",
+            cursor: "pointer",
+          }}
+        >
+          <Shield style={iconSize} />
+          {qaScore
+            ? `QA ${qaScore.total}/${qaScore.possible}`
+            : "Run QA"}
+        </button>
+      )}
 
       {/* Validation badge — clickable */}
       {validationResult && (

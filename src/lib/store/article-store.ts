@@ -4,6 +4,7 @@ import type { GenerateArticleResponse } from "@/types/claude";
 import type { ContentMapEntry } from "@/types/content-map";
 import type { ValidationResult } from "@/types/api";
 import type { HtmlOverride } from "@/types/renderer";
+import type { QAScore } from "@/types/qa";
 import type {
   ArticleEditorState,
   ArticleEditorActions,
@@ -15,6 +16,8 @@ import type {
 import { createUndoEntry, pushToStack, popFromStack, setByPath } from "@/lib/undo-redo";
 import { renderArticle } from "@/lib/renderer";
 import { TEMPLATE_VERSION } from "@/lib/renderer/compiled-template";
+import { runQAChecks, BrowserDomAdapter, getFixEntry, getFixTier } from "@/lib/qa";
+import type { DeterministicFixResult } from "@/types/qa-fix";
 
 const initialState: ArticleEditorState = {
   selectedArticleId: null,
@@ -35,6 +38,10 @@ const initialState: ArticleEditorState = {
   redoStack: [],
   isCanvasEditing: false,
   htmlOverrides: [],
+  qaScore: null,
+  isScorecardOpen: false,
+  pendingChatMessage: "",
+  isApplyingFix: false,
 };
 
 export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>(
@@ -56,6 +63,10 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         streamingText: "",
         statusMessage: "",
         isGenerating: false,
+        qaScore: null,
+        isScorecardOpen: false,
+        pendingChatMessage: "",
+        isApplyingFix: false,
       }),
 
     // Generation
@@ -326,6 +337,228 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
 
     clearHtmlOverrides: () => set({ htmlOverrides: [] }),
 
+    // === QA Scorecard ===
+
+    setQaScore: (score: QAScore | null) => set({ qaScore: score }),
+
+    setIsScorecardOpen: (open: boolean) => {
+      const state = get();
+      // Close canvas editing when opening scorecard (mutually exclusive)
+      if (open && state.isCanvasEditing) {
+        state.setIsCanvasEditing(false);
+      }
+      set({ isScorecardOpen: open });
+    },
+
+    setPendingChatMessage: (message: string) =>
+      set({ pendingChatMessage: message }),
+
+    runQa: () => {
+      const state = get();
+      if (!state.currentDocument || !state.currentHtml) {
+        console.warn("[runQa] Skipped — no document or HTML in state");
+        return;
+      }
+      try {
+        console.log("[runQa] Running QA checks on", state.currentHtml.length, "chars of HTML");
+        const dom = new BrowserDomAdapter(state.currentHtml);
+        const score = runQAChecks(state.currentDocument, state.currentHtml, dom);
+        console.log("[runQa] QA complete:", score.total, "/", score.possible, "- fails:", score.failCount, "warns:", score.warnCount);
+        // Spread into a new object so React always sees a reference change
+        set({ qaScore: { ...score }, isScorecardOpen: true, statusMessage: "" });
+      } catch (error) {
+        console.error("[runQa] QA check threw:", error);
+        set({ statusMessage: `QA failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+      }
+    },
+
+    // === QA Deterministic Fixes ===
+
+    applyDeterministicFix: (checkId: string): DeterministicFixResult | null => {
+      const state = get();
+      if (!state.currentDocument) {
+        console.warn("[applyDeterministicFix] No document in state");
+        return null;
+      }
+
+      const entry = getFixEntry(checkId);
+      if (!entry || entry.tier !== 1 || !entry.fix) {
+        console.warn("[applyDeterministicFix] No Tier 1 fix for:", checkId);
+        return null;
+      }
+
+      const result = entry.fix(state.currentDocument);
+      if (!result) {
+        console.warn("[applyDeterministicFix] Fix returned null for:", checkId);
+        return null;
+      }
+      console.log("[applyDeterministicFix]", checkId, "→", result.summary);
+
+      // Push undo before applying
+      const undoEntry = createUndoEntry(
+        state.currentDocument,
+        state.currentHtml,
+        state.htmlOverrides,
+        `Auto-fix: ${result.summary}`
+      );
+
+      // Apply all mutations
+      let updatedDoc = state.currentDocument;
+      for (const mutation of result.mutations) {
+        updatedDoc = setByPath(updatedDoc, mutation.cadPath, mutation.value);
+      }
+
+      // Re-render HTML
+      const rendered = renderArticle({
+        document: updatedDoc,
+        htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
+        templateVersion: TEMPLATE_VERSION,
+      });
+
+      // Re-run QA
+      const dom = new BrowserDomAdapter(rendered.html);
+      const qaScore = runQAChecks(updatedDoc, rendered.html, dom);
+
+      set({
+        currentDocument: updatedDoc,
+        currentHtml: rendered.html,
+        undoStack: pushToStack(state.undoStack, undoEntry),
+        redoStack: [],
+        qaScore,
+      });
+
+      return result;
+    },
+
+    applyBatchFixes: (checkIds: string[]) => {
+      const state = get();
+      if (!state.currentDocument || checkIds.length === 0) return;
+
+      const tier1Ids = checkIds.filter((id) => getFixTier(id) === 1);
+      const tier2Ids = checkIds.filter((id) => getFixTier(id) === 2);
+
+      // Push undo once for the entire batch
+      const undoEntry = createUndoEntry(
+        state.currentDocument,
+        state.currentHtml,
+        state.htmlOverrides,
+        `Batch fix: ${checkIds.length} issue(s)`
+      );
+
+      // Apply all Tier 1 fixes
+      let updatedDoc = state.currentDocument;
+      const appliedSummaries: string[] = [];
+
+      for (const checkId of tier1Ids) {
+        const entry = getFixEntry(checkId);
+        if (!entry?.fix) continue;
+        const result = entry.fix(updatedDoc);
+        if (!result) continue;
+        for (const mutation of result.mutations) {
+          updatedDoc = setByPath(updatedDoc, mutation.cadPath, mutation.value);
+        }
+        appliedSummaries.push(result.summary);
+      }
+
+      // Re-render if any Tier 1 fixes applied
+      let newHtml = state.currentHtml;
+      if (appliedSummaries.length > 0) {
+        const rendered = renderArticle({
+          document: updatedDoc,
+          htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
+          templateVersion: TEMPLATE_VERSION,
+        });
+        newHtml = rendered.html;
+      }
+
+      // Re-run QA
+      const dom = new BrowserDomAdapter(newHtml);
+      const qaScore = runQAChecks(updatedDoc, newHtml, dom);
+
+      set({
+        currentDocument: updatedDoc,
+        currentHtml: newHtml,
+        undoStack: pushToStack(state.undoStack, undoEntry),
+        redoStack: [],
+        qaScore,
+      });
+
+      // Route Tier 2 items through the targeted fix endpoint
+      if (tier2Ids.length > 0) {
+        get().applyQaFix(tier2Ids);
+      }
+    },
+
+    applyQaFix: async (checkIds: string[]) => {
+      const state = get();
+      if (!state.currentDocument || !state.currentHtml || checkIds.length === 0) {
+        console.warn("[applyQaFix] Skipped — no document/html or empty checkIds");
+        return;
+      }
+
+      console.log("[applyQaFix] Starting fix for:", checkIds);
+      set({ isApplyingFix: true, statusMessage: "Applying QA fixes..." });
+
+      try {
+        const response = await fetch("/api/articles/qa/fix", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            document: state.currentDocument,
+            html: state.currentHtml,
+            checkIds,
+          }),
+        });
+
+        const result = await response.json();
+        console.log("[applyQaFix] Response success:", result.success);
+
+        if (!result.success) {
+          console.error("[applyQaFix] Fix failed:", result.error);
+          set({
+            isApplyingFix: false,
+            statusMessage: `Fix failed: ${result.error?.message || "Unknown error"}`,
+          });
+          return;
+        }
+
+        console.log("[applyQaFix] Applied:", result.data.appliedFixes, "tokens:", result.data.claudeTokensUsed);
+        console.log("[applyQaFix] New QA score:", result.data.qaScore.total, "/", result.data.qaScore.possible,
+          "fails:", result.data.qaScore.failCount, "warns:", result.data.qaScore.warnCount);
+
+        // Re-read fresh state after the async gap
+        const freshState = get();
+        if (!freshState.currentDocument) {
+          set({ isApplyingFix: false, statusMessage: "" });
+          return;
+        }
+
+        // Push undo using CURRENT state (not the stale pre-fetch snapshot)
+        const undoEntry = createUndoEntry(
+          freshState.currentDocument,
+          freshState.currentHtml,
+          freshState.htmlOverrides,
+          `QA fix: ${checkIds.length} issue(s)`
+        );
+
+        set({
+          currentDocument: result.data.document,
+          currentHtml: result.data.html,
+          qaScore: result.data.qaScore,
+          undoStack: pushToStack(freshState.undoStack, undoEntry),
+          redoStack: [],
+          isApplyingFix: false,
+          statusMessage: "",
+        });
+        console.log("[applyQaFix] Store updated successfully");
+      } catch (error) {
+        set({
+          isApplyingFix: false,
+          statusMessage: `Fix failed: ${error instanceof Error ? error.message : "Network error"}`,
+        });
+      }
+    },
+
     // Reset
     resetEditor: () => set(initialState),
   })
@@ -365,4 +598,12 @@ export function selectCanUndo(state: ArticleEditorState): boolean {
 
 export function selectCanRedo(state: ArticleEditorState): boolean {
   return state.redoStack.length > 0;
+}
+
+export function selectQaScore(state: ArticleEditorState): QAScore | null {
+  return state.qaScore;
+}
+
+export function selectIsScorecardOpen(state: ArticleEditorState): boolean {
+  return state.isScorecardOpen;
 }

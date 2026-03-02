@@ -6,6 +6,7 @@ import { PreviewIframe } from "./PreviewIframe";
 import { HtmlSourceView } from "./HtmlSourceView";
 import { CanvasEditOverlay } from "@/components/canvas-edit";
 import { HtmlEditor } from "@/components/html-editor";
+import { ScorecardPanel } from "@/components/scorecard";
 
 export function PreviewPanel() {
   const { previewMode, editingMode } = useArticleStore();
@@ -24,6 +25,7 @@ export function PreviewPanel() {
         ) : (
           <HtmlSourceView />
         )}
+        <ScorecardPanel />
       </div>
     </div>
   );

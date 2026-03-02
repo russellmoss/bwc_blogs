@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Send } from "lucide-react";
 import { useArticleStore } from "@/lib/store/article-store";
 
@@ -12,6 +12,15 @@ export function MessageInput({ onSend }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isGenerating, selectedArticleId, activeVersionNumber } = useArticleStore();
+  const pendingChatMessage = useArticleStore((s) => s.pendingChatMessage);
+  const { setPendingChatMessage } = useArticleStore();
+
+  useEffect(() => {
+    if (pendingChatMessage) {
+      setMessage(pendingChatMessage);
+      setPendingChatMessage("");
+    }
+  }, [pendingChatMessage, setPendingChatMessage]);
 
   const handleSend = useCallback(() => {
     const trimmed = message.trim();

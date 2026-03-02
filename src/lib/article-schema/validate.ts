@@ -3,14 +3,14 @@ import type { ValidationResult } from "@/types/api";
 import { CanonicalArticleDocumentSchema } from "./schema";
 
 /** Count words in a text string (strip HTML tags first) */
-function countWords(text: string): number {
+export function countWords(text: string): number {
   const stripped = text.replace(/<[^>]*>/g, "").trim();
   if (!stripped) return 0;
   return stripped.split(/\s+/).length;
 }
 
 /** Count total words across all text content in the document */
-function countDocumentWords(doc: CanonicalArticleDocument): number {
+export function countDocumentWords(doc: CanonicalArticleDocument): number {
   let total = 0;
 
   // Executive summary

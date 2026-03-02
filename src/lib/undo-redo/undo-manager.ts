@@ -47,7 +47,7 @@ export function popFromStack(stack: UndoEntry[]): [UndoEntry | null, UndoEntry[]
 export function setByPath(
   doc: CanonicalArticleDocument,
   cadPath: string,
-  value: string
+  value: unknown
 ): CanonicalArticleDocument {
   const clone = structuredClone(doc);
 

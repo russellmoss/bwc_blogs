@@ -8,3 +8,4 @@ export * from "./claude";
 export * from "./photo";
 export * from "./api";
 export * from "./ui";
+export * from "./qa-fix";

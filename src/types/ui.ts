@@ -3,6 +3,8 @@ import type { ConversationMessage, GenerateArticleResponse } from "./claude";
 import type { ContentMapEntry } from "./content-map";
 import type { ValidationResult } from "./api";
 import type { HtmlOverride } from "./renderer";
+import type { QAScore } from "./qa";
+import type { DeterministicFixResult } from "./qa-fix";
 
 // === UI Mode Types ===
 
@@ -68,6 +70,12 @@ export interface ArticleEditorState {
   // Canvas edit
   isCanvasEditing: boolean;
   htmlOverrides: HtmlOverride[];
+
+  // QA scorecard
+  qaScore: QAScore | null;
+  isScorecardOpen: boolean;
+  pendingChatMessage: string;
+  isApplyingFix: boolean;
 }
 
 export interface ArticleEditorActions {
@@ -110,6 +118,17 @@ export interface ArticleEditorActions {
   // HTML overrides
   applyHtmlOverride: (override: HtmlOverride) => void;
   clearHtmlOverrides: () => void;
+
+  // QA scorecard
+  setQaScore: (score: QAScore | null) => void;
+  setIsScorecardOpen: (open: boolean) => void;
+  setPendingChatMessage: (message: string) => void;
+  runQa: () => void;
+
+  // QA deterministic fixes
+  applyDeterministicFix: (checkId: string) => DeterministicFixResult | null;
+  applyBatchFixes: (checkIds: string[]) => void;
+  applyQaFix: (checkIds: string[]) => Promise<void>;
 
   // Reset
   resetEditor: () => void;

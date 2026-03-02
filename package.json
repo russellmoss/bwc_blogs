@@ -28,6 +28,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
     "dotenv": "^17.3.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",

@@ -49,9 +49,12 @@ export async function generateArticle(
     message: `Claude response complete (${streamResult.tokensUsed.input} input, ${streamResult.tokensUsed.output} output tokens)`,
   });
 
-  // Step 4: Parse JSON from response, passing articleId for injection if Claude omits it
+  // Step 4: Parse JSON from response, passing articleId + articleType for injection if Claude omits them
   emit("status", { message: "Parsing response..." });
-  const parseResult = parseGenerationResponse(streamResult.text, request.articleId);
+  const briefLayer = layers.find((l) => l.name === "Article Brief");
+  const articleTypeMatch = briefLayer?.content.match(/Article Type: (\w+)/);
+  const articleType = articleTypeMatch?.[1];
+  const parseResult = parseGenerationResponse(streamResult.text, request.articleId, articleType);
 
   if (!parseResult.document) {
     emit("error", {
