@@ -733,27 +733,39 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
 
         const doc = result.data.latestDocument.canonicalDoc as CanonicalArticleDocument;
         const overrides = (result.data.latestDocument.htmlOverrides as HtmlOverride[]) || [];
+        const storedHtml: string | null = result.data.latestDocument.htmlContent ?? null;
 
-        // Re-render HTML from stored document
-        const rendered = renderArticle({
-          document: doc,
-          htmlOverrides: overrides.length > 0 ? overrides : null,
-          templateVersion: TEMPLATE_VERSION,
-        });
+        // Detect if this was an imported article (synthetic doc has version "1.0-import")
+        const isImported = (doc as unknown as Record<string, unknown>).version === "1.0-import";
+
+        // Use stored HTML if available (essential for imports), otherwise re-render
+        let html: string;
+        if (storedHtml) {
+          html = storedHtml;
+        } else {
+          const rendered = renderArticle({
+            document: doc,
+            htmlOverrides: overrides.length > 0 ? overrides : null,
+            templateVersion: TEMPLATE_VERSION,
+          });
+          html = rendered.html;
+        }
 
         set({
           currentDocument: doc,
-          currentHtml: rendered.html,
+          currentHtml: html,
           htmlOverrides: overrides,
           selectedArticleId: articleId,
           lastFinalizedVersion: result.data.latestDocument.version,
+          isImportedHtml: isImported,
+          importSource: isImported ? "paste" : null,
           statusMessage: "",
         });
 
         // Run QA so the scorecard is immediately available
         try {
-          const dom = new BrowserDomAdapter(rendered.html);
-          const qaScore = runQAChecks(doc, rendered.html, dom);
+          const dom = new BrowserDomAdapter(html);
+          const qaScore = runQAChecks(doc, html, dom, { isImported });
           set({ qaScore: { ...qaScore } });
         } catch (qaError) {
           console.error("[loadFinalizedArticle] QA check failed:", qaError);

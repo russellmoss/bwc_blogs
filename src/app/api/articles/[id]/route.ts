@@ -29,6 +29,16 @@ export async function GET(
       orderBy: { version: "desc" },
     });
 
+    // Get matching HTML record (stores the actual rendered/imported HTML)
+    let storedHtml: string | null = null;
+    if (latestDoc) {
+      const htmlRecord = await prisma.articleHtml.findFirst({
+        where: { articleId, documentVersion: latestDoc.version },
+        select: { htmlContent: true },
+      });
+      storedHtml = htmlRecord?.htmlContent ?? null;
+    }
+
     // Get version count
     const versionCount = await prisma.articleDocument.count({
       where: { articleId },
@@ -43,6 +53,7 @@ export async function GET(
               version: latestDoc.version,
               canonicalDoc: latestDoc.canonicalDoc,
               htmlOverrides: latestDoc.htmlOverrides,
+              htmlContent: storedHtml,
               finalizedAt: latestDoc.finalizedAt.toISOString(),
               finalizedBy: latestDoc.finalizedBy,
               notes: latestDoc.notes,
