@@ -116,8 +116,8 @@ export async function POST(request: NextRequest) {
     // 2. Create Photo record
     const photo = await prisma.photo.create({
       data: {
-        driveFileId: null,
-        driveUrl: null,
+        driveFileId: undefined,
+        driveUrl: undefined,
         cloudinaryPublicId: cloudinaryResult.publicId,
         cloudinaryUrl: cloudinaryResult.secureUrl,
         filename: file.name,
