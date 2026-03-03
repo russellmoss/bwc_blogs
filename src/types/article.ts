@@ -118,6 +118,7 @@ export type ContentNode =
 
 export interface ImagePlacement {
   photoId: number | null; // FK to photos table, null if external
+  cloudinaryPublicId: string | null; // Cloudinary public ID for CDN URL construction
   src: string; // URL (Cloudinary CDN or Drive fallback)
   alt: string; // Descriptive text (empty for decorative)
   caption: string | null;

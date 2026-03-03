@@ -18,7 +18,7 @@ CRITICAL RULES:
    For core page links, set targetCorePage to the page path (e.g. "shop") and linkType to "to-core-page".
 10. ExternalLinkRef format (ALL fields required): { "url": "https://example.com/page", "anchorText": "descriptive text 3-8 words", "trustTier": "authority", "sourceName": "Example Source", "sectionId": "section-1" }
     Valid trustTier values: "primary" (govt/academic), "authority" (major publications), "niche_expert" (industry experts), "general" (other)
-11. ImagePlacement format: { "photoId": null, "src": "existing-url", "alt": "descriptive 10-25 words", "caption": "optional caption", "classification": "informative", "width": 800, "height": 533 }
+11. ImagePlacement format: { "photoId": null, "cloudinaryPublicId": null, "src": "existing-url", "alt": "descriptive 10-25 words", "caption": "optional caption", "classification": "informative", "width": 800, "height": 533 }
 12. The article is about Bhutan Wine Company — a winery in the Himalayan kingdom of Bhutan. Write in a sophisticated, luxury-brand tone appropriate for wine enthusiasts.`;
 
 /**

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { Monitor, Smartphone, Eye, Code, CheckCircle, AlertTriangle, XCircle, MessageSquare, Pencil, Undo2, Redo2, Shield } from "lucide-react";
 import { useArticleStore, selectEffectiveValidation, selectCanUndo, selectCanRedo, selectQaScore } from "@/lib/store/article-store";
 import { VersionNavigator } from "./VersionNavigator";
+import { FinalizeButton } from "@/components/finalization/FinalizeButton";
+import { PublishButton } from "@/components/finalization/PublishButton";
 
 function ToggleButton({
   active,
@@ -55,6 +57,7 @@ export function PreviewToolbar() {
   const qaScore = useArticleStore(selectQaScore);
   const { runQa, setIsScorecardOpen } = useArticleStore();
   const currentDocument = useArticleStore((s) => s.currentDocument);
+  const lastFinalizedVersion = useArticleStore((s) => s.lastFinalizedVersion);
   const [showDetails, setShowDetails] = useState(false);
 
   // Global keyboard shortcuts for undo/redo
@@ -222,6 +225,10 @@ export function PreviewToolbar() {
             : "Run QA"}
         </button>
       )}
+
+      {/* Finalize & Publish buttons */}
+      {currentDocument && <FinalizeButton />}
+      {lastFinalizedVersion && <PublishButton />}
 
       {/* Validation badge — clickable */}
       {validationResult && (

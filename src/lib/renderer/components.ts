@@ -31,11 +31,12 @@ function renderImage(
   isHero: boolean,
   dataCadPrefix?: string
 ): string {
-  // Determine image src: use Cloudinary URL if photoId is set, otherwise use src directly
-  const src = placement.photoId
-    ? buildCloudinaryUrl(`blog/${placement.photoId}`, {
+  // Determine image src: use Cloudinary URL if cloudinaryPublicId is set, otherwise use src directly.
+  // Fallback to placement.src if buildCloudinaryUrl returns "" (client-side has no CLOUDINARY_CLOUD_NAME).
+  const src = placement.cloudinaryPublicId
+    ? buildCloudinaryUrl(placement.cloudinaryPublicId, {
         width: placement.width || 1200,
-      })
+      }) || placement.src
     : placement.src;
 
   const loading = isHero ? "eager" : "lazy";

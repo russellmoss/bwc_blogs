@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useArticleStore } from "@/lib/store/article-store";
 import { renderArticle, TEMPLATE_VERSION } from "@/lib/renderer";
 import { MessageList } from "./MessageList";
@@ -13,8 +13,10 @@ import type { GenerateArticleResponse } from "@/types/claude";
 export function ChatPanel() {
   const {
     selectedArticleId,
+    selectedArticle,
     currentDocument,
     conversationHistory,
+    photoManifest,
     addUserMessage,
     startGeneration,
     appendStreamingText,
@@ -24,7 +26,19 @@ export function ChatPanel() {
     setValidationResult,
     completeGeneration,
     failGeneration,
+    loadFinalizedArticle,
   } = useArticleStore();
+
+  // Auto-load finalized/published articles when selected from content map
+  useEffect(() => {
+    if (
+      selectedArticleId &&
+      (selectedArticle?.status === "finalized" || selectedArticle?.status === "published") &&
+      !currentDocument
+    ) {
+      loadFinalizedArticle(selectedArticleId);
+    }
+  }, [selectedArticleId, selectedArticle?.status, currentDocument, loadFinalizedArticle]);
 
   const handleSSEEvent = useCallback(
     (type: StreamEventType, data: unknown) => {
@@ -105,7 +119,7 @@ export function ChatPanel() {
             userMessage: message,
             conversationHistory: conversationHistory,
             currentDocument: currentDocument,
-            photoManifest: null,
+            photoManifest,
           }),
         });
 

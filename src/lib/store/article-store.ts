@@ -13,6 +13,7 @@ import type {
   ViewportMode,
   EditingMode,
 } from "@/types/ui";
+import type { PhotoManifest } from "@/types/photo";
 import { createUndoEntry, pushToStack, popFromStack, setByPath } from "@/lib/undo-redo";
 import { renderArticle } from "@/lib/renderer";
 import { TEMPLATE_VERSION } from "@/lib/renderer/compiled-template";
@@ -42,6 +43,12 @@ const initialState: ArticleEditorState = {
   isScorecardOpen: false,
   pendingChatMessage: "",
   isApplyingFix: false,
+  photoManifest: null,
+  isPhotoSelectorOpen: false,
+  isFinalizing: false,
+  isPublishing: false,
+  finalizationError: null,
+  lastFinalizedVersion: null,
 };
 
 export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>(
@@ -67,6 +74,10 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         isScorecardOpen: false,
         pendingChatMessage: "",
         isApplyingFix: false,
+        isFinalizing: false,
+        isPublishing: false,
+        finalizationError: null,
+        lastFinalizedVersion: null,
       }),
 
     // Generation
@@ -497,9 +508,13 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
       }
 
       console.log("[applyQaFix] Starting fix for:", checkIds);
-      set({ isApplyingFix: true, statusMessage: "Applying QA fixes..." });
+      set({ isApplyingFix: true, statusMessage: "Applying AI fixes..." });
 
       try {
+        // 90-second timeout — Claude API calls can take up to ~60s, plus network overhead
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 90_000);
+
         const response = await fetch("/api/articles/qa/fix", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -508,7 +523,9 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
             html: state.currentHtml,
             checkIds,
           }),
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
 
         const result = await response.json();
         console.log("[applyQaFix] Response success:", result.success);
@@ -552,9 +569,186 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         });
         console.log("[applyQaFix] Store updated successfully");
       } catch (error) {
+        const isTimeout = error instanceof DOMException && error.name === "AbortError";
         set({
           isApplyingFix: false,
-          statusMessage: `Fix failed: ${error instanceof Error ? error.message : "Network error"}`,
+          statusMessage: isTimeout
+            ? "AI fix timed out — please try again"
+            : `Fix failed: ${error instanceof Error ? error.message : "Network error"}`,
+        });
+      }
+    },
+
+    // Photo manifest
+    setPhotoManifest: (manifest: PhotoManifest | null) => set({ photoManifest: manifest }),
+    setIsPhotoSelectorOpen: (open: boolean) => set({ isPhotoSelectorOpen: open }),
+
+    // === Finalization ===
+
+    finalizeArticle: async () => {
+      const state = get();
+      if (!state.currentDocument || !state.currentHtml || !state.selectedArticleId) {
+        console.warn("[finalizeArticle] Missing document, HTML, or article ID");
+        return;
+      }
+
+      set({ isFinalizing: true, finalizationError: null, statusMessage: "Finalizing article..." });
+
+      try {
+        const response = await fetch(`/api/articles/${state.selectedArticleId}/finalize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            document: state.currentDocument,
+            html: state.currentHtml,
+            htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          set({
+            isFinalizing: false,
+            finalizationError: result.error?.message || "Finalization failed",
+            statusMessage: "",
+          });
+
+          // If QA gate failed, open the scorecard
+          if (result.error?.code === "QA_GATE_FAILED" && result.error?.details) {
+            set({ qaScore: result.error.details, isScorecardOpen: true });
+          }
+          return;
+        }
+
+        // Update state with finalized result
+        const freshState = get();
+        set({
+          isFinalizing: false,
+          finalizationError: null,
+          statusMessage: "",
+          currentHtml: result.data.finalHtml,
+          qaScore: result.data.qaScore,
+          lastFinalizedVersion: result.data.documentVersion,
+        });
+
+        // Update the selected article status in store
+        if (freshState.selectedArticle) {
+          set({
+            selectedArticle: {
+              ...freshState.selectedArticle,
+              status: "finalized" as any,
+              wordCount: result.data.wordCount,
+              qaScore: `${result.data.qaScore.total}/${result.data.qaScore.possible}`,
+            },
+          });
+        }
+      } catch (error) {
+        set({
+          isFinalizing: false,
+          finalizationError: error instanceof Error ? error.message : "Network error",
+          statusMessage: "",
+        });
+      }
+    },
+
+    publishArticle: async (url: string) => {
+      const state = get();
+      if (!state.selectedArticleId) return;
+
+      set({ isPublishing: true, statusMessage: "Publishing article..." });
+
+      try {
+        const response = await fetch(`/api/articles/${state.selectedArticleId}/publish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ publishedUrl: url }),
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          set({
+            isPublishing: false,
+            statusMessage: result.error?.message || "Publishing failed",
+          });
+          return;
+        }
+
+        const freshState = get();
+        set({
+          isPublishing: false,
+          statusMessage: "",
+        });
+
+        if (freshState.selectedArticle) {
+          set({
+            selectedArticle: {
+              ...freshState.selectedArticle,
+              status: "published" as any,
+              publishedDate: result.data.publishedDate,
+              publishedUrl: url,
+            },
+          });
+        }
+      } catch (error) {
+        set({
+          isPublishing: false,
+          statusMessage: error instanceof Error ? error.message : "Network error",
+        });
+      }
+    },
+
+    loadFinalizedArticle: async (articleId: number) => {
+      set({ statusMessage: "Loading finalized article..." });
+
+      try {
+        const response = await fetch(`/api/articles/${articleId}`);
+        const result = await response.json();
+
+        if (!result.success || !result.data.latestDocument) {
+          set({ statusMessage: "No finalized version found" });
+          return;
+        }
+
+        const doc = result.data.latestDocument.canonicalDoc as CanonicalArticleDocument;
+        const overrides = (result.data.latestDocument.htmlOverrides as HtmlOverride[]) || [];
+
+        // Re-render HTML from stored document
+        const rendered = renderArticle({
+          document: doc,
+          htmlOverrides: overrides.length > 0 ? overrides : null,
+          templateVersion: TEMPLATE_VERSION,
+        });
+
+        set({
+          currentDocument: doc,
+          currentHtml: rendered.html,
+          htmlOverrides: overrides,
+          selectedArticleId: articleId,
+          lastFinalizedVersion: result.data.latestDocument.version,
+          statusMessage: "",
+        });
+
+        // Run QA so the scorecard is immediately available
+        try {
+          const dom = new BrowserDomAdapter(rendered.html);
+          const qaScore = runQAChecks(doc, rendered.html, dom);
+          set({ qaScore: { ...qaScore } });
+        } catch (qaError) {
+          console.error("[loadFinalizedArticle] QA check failed:", qaError);
+        }
+
+        // Load version history
+        const versionsResponse = await fetch(`/api/articles/${articleId}/versions`);
+        const versionsResult = await versionsResponse.json();
+
+        if (versionsResult.success) {
+          console.log("[loadFinalizedArticle] Loaded", versionsResult.data.length, "versions");
+        }
+      } catch (error) {
+        set({
+          statusMessage: error instanceof Error ? error.message : "Failed to load article",
         });
       }
     },

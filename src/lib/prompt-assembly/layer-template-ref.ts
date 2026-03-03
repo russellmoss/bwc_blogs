@@ -16,6 +16,8 @@ CONTENT NODE TYPES:
 7. "callout" — { type: "callout", id, variant: "info"|"tip"|"warning", text } — Highlighted callout box
 
 IMAGE PLACEMENT:
+- ImagePlacement: { photoId, cloudinaryPublicId, src, alt, caption, classification, width, height }
+- Set photoId to the photo's ID from the library. Set cloudinaryPublicId to null (populated on finalization).
 - heroImage: appears above article, loading="eager", fetchpriority="high"
 - Inline images: loading="lazy", positioned within sections
 - All images require: src (URL), alt (10-25 words for informative, "" for decorative), width, height

@@ -11,7 +11,9 @@ export function buildSchemaJson(doc: CanonicalArticleDocument): string {
   // BlogPosting (always present — enforced by validation)
   if (doc.schema.blogPosting) {
     const heroUrl = doc.heroImage
-      ? doc.heroImage.src || buildCloudinaryUrl(doc.heroImage.photoId ? `blog/${doc.heroImage.photoId}` : null)
+      ? (doc.heroImage.cloudinaryPublicId
+          ? buildCloudinaryUrl(doc.heroImage.cloudinaryPublicId, { width: 1200 })
+          : doc.heroImage.src)
       : undefined;
 
     const blogPosting: Record<string, unknown> = {

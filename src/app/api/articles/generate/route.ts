@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth/session";
 import { generateArticle } from "@/lib/orchestration";
+import { prisma } from "@/lib/db";
 import type { StreamEvent, GenerateArticleRequest } from "@/types/claude";
+import type { PhotoManifest } from "@/types/photo";
 import { z } from "zod";
 
 const GenerateRequestSchema = z.object({
@@ -50,12 +52,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Auto-fetch photo library from DB if client didn't provide a manifest
+    let photoManifest: PhotoManifest | null = parsed.data.photoManifest as PhotoManifest | null;
+    if (!photoManifest) {
+      const photos = await prisma.photo.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      if (photos.length > 0) {
+        photoManifest = {
+          photos: photos.map((p) => ({
+            id: p.id,
+            driveFileId: p.driveFileId ?? "",
+            driveUrl: p.driveUrl ?? "",
+            cloudinaryPublicId: p.cloudinaryPublicId,
+            cloudinaryUrl: p.cloudinaryUrl,
+            filename: p.filename,
+            category: p.category,
+            description: p.description,
+            altText: p.altText,
+            classification: p.classification as "informative" | "decorative",
+            vineyardName: p.vineyardName,
+            season: p.season,
+            widthPx: p.widthPx,
+            heightPx: p.heightPx,
+            uploadedToCdn: p.uploadedToCdn,
+          })),
+          heroPhotoId: null,
+          totalAvailable: photos.length,
+        };
+      }
+    }
+
     const generateRequest: GenerateArticleRequest = {
       articleId: parsed.data.articleId,
       userMessage: parsed.data.userMessage,
       conversationHistory: parsed.data.conversationHistory,
       currentDocument: parsed.data.currentDocument as GenerateArticleRequest["currentDocument"],
-      photoManifest: parsed.data.photoManifest as GenerateArticleRequest["photoManifest"],
+      photoManifest,
     };
 
     // Create a ReadableStream that emits SSE events

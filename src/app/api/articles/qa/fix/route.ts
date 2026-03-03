@@ -15,6 +15,38 @@ import type { CanonicalArticleDocument } from "@/types/article";
 import type { ApiResponse } from "@/types/api";
 import type { QAScore } from "@/types/qa";
 
+/** Coerce string photoIds/dimensions to numbers in all ImagePlacement nodes */
+function coerceImageFields(doc: Record<string, unknown>): void {
+  const coerce = (p: Record<string, unknown>) => {
+    if (typeof p.photoId === "string") {
+      const n = parseInt(p.photoId as string, 10);
+      p.photoId = isNaN(n) ? null : n;
+    }
+    if (typeof p.width === "string") {
+      const n = parseInt(p.width as string, 10);
+      p.width = isNaN(n) ? null : n;
+    }
+    if (typeof p.height === "string") {
+      const n = parseInt(p.height as string, 10);
+      p.height = isNaN(n) ? null : n;
+    }
+  };
+  if (doc.heroImage && typeof doc.heroImage === "object") {
+    coerce(doc.heroImage as Record<string, unknown>);
+  }
+  if (Array.isArray(doc.sections)) {
+    for (const section of doc.sections as Record<string, unknown>[]) {
+      if (Array.isArray(section.content)) {
+        for (const node of section.content as Record<string, unknown>[]) {
+          if (node.type === "image" && typeof node.placement === "object" && node.placement !== null) {
+            coerce(node.placement as Record<string, unknown>);
+          }
+        }
+      }
+    }
+  }
+}
+
 const FixRequestSchema = z.object({
   document: z.record(z.string(), z.unknown()),
   html: z.string().min(1),
@@ -55,7 +87,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Validate the document
+    // 3. Coerce string photoIds/dimensions to numbers before Zod validation
+    coerceImageFields(parsed.data.document as Record<string, unknown>);
+
+    // 4. Validate the document
     const docParsed = CanonicalArticleDocumentSchema.safeParse(parsed.data.document);
     if (!docParsed.success) {
       return NextResponse.json(
@@ -148,6 +183,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // 6b. Coerce any string photoIds introduced by Claude's patch
+    coerceImageFields(doc as unknown as Record<string, unknown>);
+
     // 7. Re-render HTML
     const rendered = renderArticle({
       document: doc,
@@ -200,6 +238,20 @@ export async function POST(request: Request) {
           error: { code: "AUTH_FORBIDDEN", message: "Admin or editor role required" },
         } as ApiResponse<never>,
         { status: 403 }
+      );
+    }
+    // Handle Prisma/Neon connection errors
+    if (
+      message.includes("Connection") ||
+      message.includes("connection") ||
+      error instanceof Error && "code" in error && ["P2024", "P1017", "P1001", "P1002"].includes((error as any).code)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: { code: "INTERNAL_ERROR", message: "Database connection lost. Please retry." },
+        } as ApiResponse<never>,
+        { status: 503 }
       );
     }
     if (message === "GENERATION_FAILED") {

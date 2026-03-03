@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { User, Settings, LogOut, ChevronDown } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
+import { User, Settings, LogOut, ChevronDown, Image, ExternalLink, PenTool, LayoutGrid } from "lucide-react";
+import Link from "next/link";
 import { ArticleSelector } from "./ArticleSelector";
 
 function UserMenu() {
@@ -134,6 +135,11 @@ function UserMenu() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isComposer = pathname === "/dashboard";
+  const isContentMap = pathname === "/dashboard/content-map";
+  const isPhotos = pathname === "/dashboard/photos";
+
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
       {/* Header */}
@@ -156,6 +162,78 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <div style={{ borderLeft: "1px solid #e8e6e6", height: "24px", margin: "0 8px" }} />
         <ArticleSelector />
+
+        <Link
+          href="/dashboard"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "4px 8px",
+            fontSize: "13px",
+            color: isComposer ? "#bc9b5d" : "#414141",
+            fontWeight: isComposer ? 600 : 400,
+            textDecoration: "none",
+            borderRadius: "4px",
+          }}
+        >
+          <PenTool style={{ width: "14px", height: "14px" }} />
+          Composer
+        </Link>
+        <Link
+          href="/dashboard/content-map"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "4px 8px",
+            fontSize: "13px",
+            color: isContentMap ? "#bc9b5d" : "#414141",
+            fontWeight: isContentMap ? 600 : 400,
+            textDecoration: "none",
+            borderRadius: "4px",
+          }}
+        >
+          <LayoutGrid style={{ width: "14px", height: "14px" }} />
+          Content Map
+        </Link>
+        <Link
+          href="/dashboard/photos"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "4px 8px",
+            fontSize: "13px",
+            color: isPhotos ? "#bc9b5d" : "#414141",
+            fontWeight: isPhotos ? 600 : 400,
+            textDecoration: "none",
+            borderRadius: "4px",
+          }}
+        >
+          <Image style={{ width: "14px", height: "14px" }} />
+          Photos
+        </Link>
+
+        {process.env.NEXT_PUBLIC_GOOGLE_DRIVE_PHOTOS_FOLDER_URL && (
+          <a
+            href={process.env.NEXT_PUBLIC_GOOGLE_DRIVE_PHOTOS_FOLDER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "4px 8px",
+              fontSize: "13px",
+              color: "#bc9b5d",
+              textDecoration: "none",
+            }}
+          >
+            <ExternalLink style={{ width: "12px", height: "12px" }} />
+            Source Drive
+          </a>
+        )}
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />

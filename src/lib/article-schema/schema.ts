@@ -11,6 +11,7 @@ export const AuthorInfoSchema = z.object({
 
 export const ImagePlacementSchema = z.object({
   photoId: z.number().nullable(),
+  cloudinaryPublicId: z.string().nullable().default(null),
   src: z.string().min(1),
   alt: z.string(),
   caption: z.string().nullable(),

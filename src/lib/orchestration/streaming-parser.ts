@@ -291,6 +291,13 @@ function normalizeDocument(obj: Record<string, unknown>, articleId?: number, art
   // Ensure heroImage is null if missing (not undefined)
   if (!result.heroImage) result.heroImage = null;
 
+  // Coerce photoId, width, height from string to number in all ImagePlacement nodes
+  // Claude often returns these as strings (e.g. "5" instead of 5)
+  coerceImageFields(result);
+
+  // Normalize content node types — Claude often uses non-standard types
+  normalizeContentNodeTypes(result);
+
   // Clean HTML from author fields — Claude sometimes embeds <a> tags in author.name
   if (typeof result.author === "object" && result.author !== null) {
     const author = result.author as Record<string, unknown>;
@@ -313,6 +320,83 @@ function normalizeDocument(obj: Record<string, unknown>, articleId?: number, art
   console.log("[streaming-parser] title:", typeof result.title, "articleId:", typeof result.articleId, "sections:", Array.isArray(result.sections));
 
   return result;
+}
+
+/**
+ * Coerces photoId, width, height from strings to numbers in all ImagePlacement nodes.
+ * Claude frequently outputs these as strings (e.g. "5" instead of 5).
+ */
+function coerceImageFields(doc: Record<string, unknown>): void {
+  const coercePlacement = (p: Record<string, unknown>) => {
+    if (typeof p.photoId === "string") {
+      const n = parseInt(p.photoId as string, 10);
+      p.photoId = isNaN(n) ? null : n;
+    }
+    if (typeof p.width === "string") {
+      const n = parseInt(p.width as string, 10);
+      p.width = isNaN(n) ? null : n;
+    }
+    if (typeof p.height === "string") {
+      const n = parseInt(p.height as string, 10);
+      p.height = isNaN(n) ? null : n;
+    }
+  };
+
+  if (doc.heroImage && typeof doc.heroImage === "object") {
+    coercePlacement(doc.heroImage as Record<string, unknown>);
+  }
+  if (Array.isArray(doc.sections)) {
+    for (const section of doc.sections as Record<string, unknown>[]) {
+      if (Array.isArray(section.content)) {
+        for (const node of section.content as Record<string, unknown>[]) {
+          if (node.type === "image" && typeof node.placement === "object" && node.placement !== null) {
+            coercePlacement(node.placement as Record<string, unknown>);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Normalizes content node types that Claude invents to the 7 valid types.
+ */
+function normalizeContentNodeTypes(doc: Record<string, unknown>): void {
+  const validTypes = new Set(["paragraph", "image", "pullQuote", "keyFacts", "table", "list", "callout"]);
+  const typeMap: Record<string, string> = {
+    blockquote: "pullQuote", quote: "pullQuote", pull_quote: "pullQuote", pullquote: "pullQuote",
+    heading: "paragraph", subheading: "paragraph", h2: "paragraph", h3: "paragraph",
+    data_table: "table", dataTable: "table",
+    ordered_list: "list", unordered_list: "list", orderedList: "list", unorderedList: "list",
+    bullet_list: "list", bulletList: "list", numbered_list: "list", numberedList: "list",
+    info: "callout", tip: "callout", warning: "callout", note: "callout",
+    infobox: "callout", info_box: "callout",
+    text: "paragraph", richText: "paragraph", rich_text: "paragraph", html: "paragraph",
+    key_facts: "keyFacts", keyfacts: "keyFacts", facts: "keyFacts",
+    stat: "keyFacts", stats: "keyFacts", statistics: "keyFacts",
+  };
+
+  if (!Array.isArray(doc.sections)) return;
+  for (const section of doc.sections as Record<string, unknown>[]) {
+    if (!Array.isArray(section.content)) continue;
+    for (const node of section.content as Record<string, unknown>[]) {
+      const t = node.type as string;
+      if (t && !validTypes.has(t)) {
+        const mapped = typeMap[t] || typeMap[t.toLowerCase()];
+        if (mapped) {
+          node.type = mapped;
+          if (mapped === "pullQuote" && !node.text && node.content) { node.text = node.content; delete node.content; }
+          if (mapped === "pullQuote" && !node.attribution) node.attribution = null;
+          if (mapped === "paragraph" && !node.text) { node.text = (node.content || node.heading || node.value || "") as string; }
+          if (mapped === "callout" && !node.variant) node.variant = t === "warning" ? "warning" : t === "tip" ? "tip" : "info";
+          if (mapped === "callout" && !node.text && node.content) { node.text = node.content; delete node.content; }
+        } else if (typeof node.text === "string" || typeof node.content === "string") {
+          node.type = "paragraph";
+          if (!node.text && node.content) { node.text = node.content; delete node.content; }
+        }
+      }
+    }
+  }
 }
 
 function isCanonicalDoc(obj: unknown): obj is CanonicalArticleDocument {

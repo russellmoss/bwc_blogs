@@ -5,6 +5,7 @@ import type { ValidationResult } from "./api";
 import type { HtmlOverride } from "./renderer";
 import type { QAScore } from "./qa";
 import type { DeterministicFixResult } from "./qa-fix";
+import type { PhotoManifest } from "./photo";
 
 // === UI Mode Types ===
 
@@ -76,6 +77,16 @@ export interface ArticleEditorState {
   isScorecardOpen: boolean;
   pendingChatMessage: string;
   isApplyingFix: boolean;
+
+  // Photo manifest (Available Library for generation)
+  photoManifest: PhotoManifest | null;
+  isPhotoSelectorOpen: boolean;
+
+  // Finalization state
+  isFinalizing: boolean;
+  isPublishing: boolean;
+  finalizationError: string | null;
+  lastFinalizedVersion: number | null;
 }
 
 export interface ArticleEditorActions {
@@ -129,6 +140,15 @@ export interface ArticleEditorActions {
   applyDeterministicFix: (checkId: string) => DeterministicFixResult | null;
   applyBatchFixes: (checkIds: string[]) => void;
   applyQaFix: (checkIds: string[]) => Promise<void>;
+
+  // Photo manifest
+  setPhotoManifest: (manifest: PhotoManifest | null) => void;
+  setIsPhotoSelectorOpen: (open: boolean) => void;
+
+  // Finalization actions
+  finalizeArticle: () => Promise<void>;
+  publishArticle: (url: string) => Promise<void>;
+  loadFinalizedArticle: (articleId: number) => Promise<void>;
 
   // Reset
   resetEditor: () => void;

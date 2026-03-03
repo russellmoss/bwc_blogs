@@ -360,12 +360,109 @@ export function repairCanonicalDocument(doc: unknown): {
       }
     }
 
-    // 14. Remove content nodes with empty required text fields
+    // 14. Convert or remove content nodes with unrecognized types
+    const validNodeTypes = new Set(["paragraph", "image", "pullQuote", "keyFacts", "table", "list", "callout"]);
+    const typeMapping: Record<string, string> = {
+      // Quote-like → pullQuote
+      blockquote: "pullQuote",
+      quote: "pullQuote",
+      pull_quote: "pullQuote",
+      pullquote: "pullQuote",
+      // Heading-like → paragraph (headings are section-level, not content nodes)
+      heading: "paragraph",
+      subheading: "paragraph",
+      h2: "paragraph",
+      h3: "paragraph",
+      // Table-like
+      data_table: "table",
+      dataTable: "table",
+      // List-like
+      ordered_list: "list",
+      unordered_list: "list",
+      orderedList: "list",
+      unorderedList: "list",
+      bullet_list: "list",
+      bulletList: "list",
+      numbered_list: "list",
+      numberedList: "list",
+      // Info/tip/warning → callout
+      info: "callout",
+      tip: "callout",
+      warning: "callout",
+      note: "callout",
+      infobox: "callout",
+      info_box: "callout",
+      // Text-like → paragraph
+      text: "paragraph",
+      richText: "paragraph",
+      rich_text: "paragraph",
+      html: "paragraph",
+      // key_facts variants
+      key_facts: "keyFacts",
+      keyfacts: "keyFacts",
+      facts: "keyFacts",
+      stat: "keyFacts",
+      stats: "keyFacts",
+      statistics: "keyFacts",
+    };
+    for (const section of d.sections as Record<string, unknown>[]) {
+      if (Array.isArray(section.content)) {
+        for (const node of section.content as Record<string, unknown>[]) {
+          const t = node.type as string;
+          if (t && !validNodeTypes.has(t)) {
+            const mapped = typeMapping[t] || typeMapping[t.toLowerCase()];
+            if (mapped) {
+              changes.push(`Converted content node type "${t}" to "${mapped}" in section "${section.id}"`);
+              node.type = mapped;
+              // Fix sub-fields for the mapped type
+              if (mapped === "pullQuote" && !node.text && node.content) {
+                node.text = node.content;
+                delete node.content;
+              }
+              if (mapped === "pullQuote" && !node.attribution) {
+                node.attribution = null;
+              }
+              if (mapped === "paragraph" && !node.text) {
+                // Try to salvage text from other fields
+                node.text = (node.content || node.heading || node.value || "") as string;
+                delete node.content;
+                delete node.heading;
+                delete node.value;
+              }
+              if (mapped === "callout" && !node.variant) {
+                node.variant = t === "warning" ? "warning" : t === "tip" ? "tip" : "info";
+              }
+              if (mapped === "callout" && !node.text && node.content) {
+                node.text = node.content;
+                delete node.content;
+              }
+            } else {
+              // Unknown type with a text field → convert to paragraph
+              if (typeof node.text === "string" || typeof node.content === "string") {
+                changes.push(`Converted unknown content node type "${t}" to paragraph in section "${section.id}"`);
+                node.type = "paragraph";
+                if (!node.text && node.content) {
+                  node.text = node.content;
+                  delete node.content;
+                }
+              }
+              // else: will be filtered out in step 15
+            }
+          }
+        }
+      }
+    }
+
+    // 15. Remove content nodes with empty required text fields or still-invalid types
     for (const section of d.sections as Record<string, unknown>[]) {
       if (Array.isArray(section.content)) {
         const before = (section.content as unknown[]).length;
         section.content = (section.content as Record<string, unknown>[]).filter((node) => {
           const t = node.type as string;
+          // Remove nodes with types that are still not in the valid set
+          if (!validNodeTypes.has(t)) {
+            return false;
+          }
           // Nodes that require non-empty text: paragraph, pullQuote, callout, keyFacts
           if ((t === "paragraph" || t === "pullQuote" || t === "callout") &&
               (typeof node.text !== "string" || (node.text as string).trim().length === 0)) {
@@ -388,6 +485,43 @@ export function repairCanonicalDocument(doc: unknown): {
       }
     }
 
+  }
+
+  // 16. Coerce photoId from string to number in all ImagePlacement nodes
+  const coercePhotoId = (placement: Record<string, unknown>) => {
+    if (typeof placement.photoId === "string") {
+      const parsed = parseInt(placement.photoId as string, 10);
+      if (!isNaN(parsed)) {
+        placement.photoId = parsed;
+        changes.push(`Coerced photoId from string "${placement.photoId}" to number ${parsed}`);
+      } else {
+        placement.photoId = null;
+        changes.push(`Set invalid photoId string to null`);
+      }
+    }
+    if (typeof placement.width === "string") {
+      const w = parseInt(placement.width as string, 10);
+      placement.width = isNaN(w) ? null : w;
+    }
+    if (typeof placement.height === "string") {
+      const h = parseInt(placement.height as string, 10);
+      placement.height = isNaN(h) ? null : h;
+    }
+  };
+
+  if (d.heroImage && typeof d.heroImage === "object") {
+    coercePhotoId(d.heroImage as Record<string, unknown>);
+  }
+  if (Array.isArray(d.sections)) {
+    for (const section of d.sections as Record<string, unknown>[]) {
+      if (Array.isArray(section.content)) {
+        for (const node of section.content as Record<string, unknown>[]) {
+          if (node.type === "image" && typeof node.placement === "object" && node.placement !== null) {
+            coercePhotoId(node.placement as Record<string, unknown>);
+          }
+        }
+      }
+    }
   }
 
   // Re-parse after repairs

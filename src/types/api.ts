@@ -27,6 +27,7 @@ export type ErrorCode =
   | "QA_GATE_FAILED"
   | "CLOUDINARY_ERROR"
   | "LINK_VERIFICATION_FAILED"
+  | "FINALIZATION_FAILED"
   | "INTERNAL_ERROR";
 
 // Validation result returned by article schema validation

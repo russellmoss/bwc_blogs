@@ -78,6 +78,36 @@ export function runImageChecks(
     )
   );
 
+  // F18: No duplicate photo IDs
+  const photoIds: number[] = [];
+  if (doc.heroImage?.photoId) photoIds.push(doc.heroImage.photoId);
+  for (const section of doc.sections) {
+    for (const node of section.content) {
+      if (node.type === "image" && node.placement.photoId) {
+        photoIds.push(node.placement.photoId);
+      }
+    }
+  }
+  const seen = new Set<number>();
+  const duplicates = new Set<number>();
+  for (const id of photoIds) {
+    if (seen.has(id)) duplicates.add(id);
+    seen.add(id);
+  }
+  results.push(
+    createResult(
+      CHECK_REGISTRY.F18,
+      duplicates.size === 0,
+      duplicates.size === 0
+        ? `All ${photoIds.length} photo placements use unique IDs`
+        : `Duplicate photo ID(s): ${[...duplicates].join(", ")} — each photo must appear only once`,
+      null,
+      duplicates.size > 0
+        ? `Replace duplicate photo(s) with different images from the library. Duplicate ID(s): ${[...duplicates].join(", ")}`
+        : null
+    )
+  );
+
   // W17: Captions on location/process images
   const uncaptionedImages: string[] = [];
   for (const section of doc.sections) {

@@ -81,6 +81,7 @@ export const CHECK_REGISTRY: Record<string, QACheck> = {
   F15: { id: "F15", name: "Prohibited anchor text", severity: "fail", rule: "No generic anchors", category: "links" },
   F16: { id: "F16", name: "Internal links valid", severity: "fail", rule: "All in registry (deferred)", category: "links" },
   F17: { id: "F17", name: "Canonical URL", severity: "fail", rule: "bhutanwine.com domain", category: "schema" },
+  F18: { id: "F18", name: "No duplicate photos", severity: "fail", rule: "Each photo ID used at most once", category: "images" },
 
   // WARN-level (26)
   W01: { id: "W01", name: "H1 length", severity: "warn", rule: "50–65 chars", category: "structure" },

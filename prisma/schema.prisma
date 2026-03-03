@@ -136,8 +136,8 @@ model InternalLink {
 
 model Photo {
   id                  Int      @id @default(autoincrement())
-  driveFileId         String   @unique @map("drive_file_id")
-  driveUrl            String   @map("drive_url")
+  driveFileId         String?  @unique @map("drive_file_id")
+  driveUrl            String?  @map("drive_url")
   cloudinaryPublicId  String?  @map("cloudinary_public_id")
   cloudinaryUrl       String?  @map("cloudinary_url")
   filename            String

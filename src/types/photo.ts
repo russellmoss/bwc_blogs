@@ -1,7 +1,7 @@
 export interface Photo {
   id: number;
-  driveFileId: string;
-  driveUrl: string;
+  driveFileId: string | null;
+  driveUrl: string | null;
   cloudinaryPublicId: string | null;
   cloudinaryUrl: string | null;
   filename: string;

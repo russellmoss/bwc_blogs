@@ -128,6 +128,110 @@ function fixSlugLength(doc: CanonicalArticleDocument): DeterministicFixResult | 
   return null;
 }
 
+/** F06: Too many H2 sections → demote excess H2s to H3 */
+function fixSectionCount(doc: CanonicalArticleDocument): DeterministicFixResult | null {
+  const h2Max: Record<string, number> = { hub: 8, spoke: 5, news: 3 };
+  const h2Min: Record<string, number> = { hub: 5, spoke: 3, news: 2 };
+  const max = h2Max[doc.articleType] ?? 8;
+  const min = h2Min[doc.articleType] ?? 2;
+
+  const h2Indices = doc.sections
+    .map((s, i) => (s.headingLevel === 2 ? i : -1))
+    .filter((i) => i !== -1);
+
+  if (h2Indices.length <= max) return null; // not too many
+
+  // Keep the first `max` H2s, demote the rest to H3
+  const toDemote = h2Indices.slice(max);
+  const mutations: DeterministicFixResult["mutations"] = toDemote.map((idx) => ({
+    cadPath: `sections[${idx}].headingLevel`,
+    value: 3 as const,
+  }));
+
+  return {
+    mutations,
+    summary: `Demoted ${toDemote.length} excess H2 sections to H3 (${doc.articleType} needs ${min}-${max} H2s, had ${h2Indices.length})`,
+  };
+}
+
+/** F12: Alt text too long → trim to 25 words at word boundary */
+function fixAltTextLength(doc: CanonicalArticleDocument): DeterministicFixResult | null {
+  const mutations: DeterministicFixResult["mutations"] = [];
+  const summaryParts: string[] = [];
+
+  const trimAlt = (alt: string): string | null => {
+    const words = alt.replace(/<[^>]*>/g, "").trim().split(/\s+/);
+    if (words.length <= 25) return null;
+    // Trim to 25 words
+    return words.slice(0, 25).join(" ");
+  };
+
+  // Hero image
+  if (doc.heroImage?.classification === "informative") {
+    const trimmed = trimAlt(doc.heroImage.alt);
+    if (trimmed) {
+      mutations.push({ cadPath: "heroImage.alt", value: trimmed });
+      summaryParts.push(`hero alt ${doc.heroImage.alt.split(/\s+/).length}→25 words`);
+    }
+  }
+
+  // Section images
+  for (let si = 0; si < doc.sections.length; si++) {
+    for (let ci = 0; ci < doc.sections[si].content.length; ci++) {
+      const node = doc.sections[si].content[ci];
+      if (node.type === "image" && node.placement.classification === "informative") {
+        const trimmed = trimAlt(node.placement.alt);
+        if (trimmed) {
+          mutations.push({
+            cadPath: `sections[${si}].content[${ci}].placement.alt`,
+            value: trimmed,
+          });
+          summaryParts.push(`s${si}c${ci} alt ${node.placement.alt.split(/\s+/).length}→25 words`);
+        }
+      }
+    }
+  }
+
+  if (mutations.length === 0) return null;
+  return { mutations, summary: `Trimmed alt text: ${summaryParts.join("; ")}` };
+}
+
+/** F18: Duplicate photo IDs → null out duplicate references */
+function fixDuplicatePhotos(doc: CanonicalArticleDocument): DeterministicFixResult | null {
+  const seen = new Set<number>();
+  const mutations: DeterministicFixResult["mutations"] = [];
+  const dupeIds: number[] = [];
+
+  // Hero image first (keep the first occurrence)
+  if (doc.heroImage?.photoId) {
+    seen.add(doc.heroImage.photoId);
+  }
+
+  // Section images
+  for (let si = 0; si < doc.sections.length; si++) {
+    for (let ci = 0; ci < doc.sections[si].content.length; ci++) {
+      const node = doc.sections[si].content[ci];
+      if (node.type === "image" && node.placement.photoId) {
+        if (seen.has(node.placement.photoId)) {
+          dupeIds.push(node.placement.photoId);
+          mutations.push({
+            cadPath: `sections[${si}].content[${ci}].placement.photoId`,
+            value: null,
+          });
+        } else {
+          seen.add(node.placement.photoId);
+        }
+      }
+    }
+  }
+
+  if (mutations.length === 0) return null;
+  return {
+    mutations,
+    summary: `Cleared ${mutations.length} duplicate photo reference(s) (IDs: ${[...new Set(dupeIds)].join(", ")})`,
+  };
+}
+
 /** W18: FAQPage schema flag out of sync → sync with FAQ array presence */
 function fixFaqPageSchemaSync(doc: CanonicalArticleDocument): DeterministicFixResult | null {
   const hasFaq = doc.faq.length > 0;
@@ -152,16 +256,18 @@ const FIX_REGISTRY: Record<string, FixRegistryEntry> = {
   F14: { tier: 1, fix: fixPublicationDate },
   F17: { tier: 1, fix: fixCanonicalUrl },
 
+  F06: { tier: 1, fix: fixSectionCount },
+  F12: { tier: 1, fix: fixAltTextLength },
+  F18: { tier: 1, fix: fixDuplicatePhotos },
+
   // FAIL-level — Tier 2 (Claude-assisted)
   F01: { tier: 2, claudePromptTemplate: "The article's H1 comes from the 'title' field. If it's empty, write a compelling 50-65 character title. If section content contains duplicate H1-level headings in inline HTML, remove them. Return the 'title' field (and 'sections' if inline HTML was changed)." },
   F02: { tier: 2, claudePromptTemplate: "Fix heading hierarchy in the sections array. Each section has a 'headingLevel' (2 or 3). Ensure no section uses level 4-6, and levels don't skip (e.g. a level-3 section must follow a level-2 section). Adjust headingLevel values and reorganize sections as needed. Return the full 'sections' array." },
   F03: { tier: 2, claudePromptTemplate: "Rewrite the 'executiveSummary' field to be exactly 25-40 words. It should be a compelling, concise summary of the article's key point. Return just the 'executiveSummary' field." },
-  F06: { tier: 2, claudePromptTemplate: "Fix the section/word count issue. If there are too many H2 sections (headingLevel: 2), consolidate related sections by merging their content under fewer headings — combine the content arrays and pick the best heading. If word count is too low, expand existing section paragraphs with more detail and substance. Check the 'Current' note for whether it's a section count or word count problem. Return the full 'sections' array." },
   F07: { tier: 2, claudePromptTemplate: "Add more internal links to bhutanwine.com/post/* blog articles. Add entries to the internalLinks array with targetUrl, anchorText (3-8 words), linkType (e.g. 'spoke-to-hub', 'hub-to-spoke'), sectionId matching an existing section, targetArticleId: null, and targetCorePage: null. Distribute across multiple sections. Return the full 'internalLinks' array. Check the 'Current' note for the count shortfall." },
   F08: { tier: 2, claudePromptTemplate: "Add more core page links — links to main bhutanwine.com site pages (NOT blog posts). Examples: shop, about-us, tours, wine-tasting, contact. Each link needs: targetUrl (e.g. 'https://www.bhutanwine.com/shop'), targetCorePage set to the page path (e.g. 'shop'), linkType: 'to-core-page', targetArticleId: null, and a sectionId. Return the full 'internalLinks' array. Check the 'Current' note for the count shortfall." },
   F09: { tier: 2, claudePromptTemplate: "Add more external source links to authoritative domains. Good sources: government tourism sites, wine authorities (OIV, Wine Institute), academic/research institutions, major publications (Decanter, Wine Spectator). Each needs: url, anchorText (3-8 words), trustTier ('primary' for govt/academic, 'authority' for major pubs), sourceName, and sectionId. Spread across 3+ sections. Return the full 'externalLinks' array." },
   F11: { tier: 2, claudePromptTemplate: "Set the heroImage.alt field to descriptive text (10-25 words) that describes the image content for accessibility. Also ensure heroImage.classification is 'informative'. Return the 'heroImage' object." },
-  F12: { tier: 2, claudePromptTemplate: "Find images in sections[].content where type='image' and placement.alt is empty or missing. Write descriptive alt text (10-25 words) for each. Set classification to 'informative' for content images or 'decorative' (with alt='') for decorative ones. Return the full 'sections' array." },
   F13: { tier: 2, claudePromptTemplate: "Set the 'author' object fields: 'name' should be a plausible wine/travel writer name, 'credentials' should describe relevant expertise (e.g. 'Certified Sommelier & Himalayan Travel Writer'), and 'bio' should be a 2-3 sentence professional bio. Return the 'author' object." },
   F15: { tier: 2, claudePromptTemplate: "Find links in internalLinks and externalLinks arrays where anchorText is generic ('click here', 'read more', 'learn more', 'link', 'here'). Replace each with descriptive 3-8 word anchor text that describes the destination. Return the full 'internalLinks' and/or 'externalLinks' arrays." },
   F16: { tier: 2, claudePromptTemplate: "Review all internal link URLs in the internalLinks array. Ensure each targetUrl follows the format 'https://www.bhutanwine.com/post/slug-here'. Remove any links with broken or invalid URLs. Return the full 'internalLinks' array." },
