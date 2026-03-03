@@ -19,6 +19,7 @@ import { renderArticle } from "@/lib/renderer";
 import { TEMPLATE_VERSION } from "@/lib/renderer/compiled-template";
 import { runQAChecks, BrowserDomAdapter, getFixEntry, getFixTier } from "@/lib/qa";
 import type { DeterministicFixResult } from "@/types/qa-fix";
+import { extractMetadataFromHtmlBrowser, buildSyntheticDocument } from "@/lib/html-import";
 
 const initialState: ArticleEditorState = {
   selectedArticleId: null,
@@ -49,6 +50,9 @@ const initialState: ArticleEditorState = {
   isPublishing: false,
   finalizationError: null,
   lastFinalizedVersion: null,
+  isImportedHtml: false,
+  importSource: null,
+  selectedStyleId: null,
 };
 
 export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>(
@@ -78,6 +82,8 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         isPublishing: false,
         finalizationError: null,
         lastFinalizedVersion: null,
+        isImportedHtml: false,
+        importSource: null,
       }),
 
     // Generation
@@ -373,7 +379,9 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
       try {
         console.log("[runQa] Running QA checks on", state.currentHtml.length, "chars of HTML");
         const dom = new BrowserDomAdapter(state.currentHtml);
-        const score = runQAChecks(state.currentDocument, state.currentHtml, dom);
+        const score = runQAChecks(state.currentDocument, state.currentHtml, dom, {
+          isImported: state.isImportedHtml,
+        });
         console.log("[runQa] QA complete:", score.total, "/", score.possible, "- fails:", score.failCount, "warns:", score.warnCount);
         // Spread into a new object so React always sees a reference change
         set({ qaScore: { ...score }, isScorecardOpen: true, statusMessage: "" });
@@ -419,20 +427,28 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         updatedDoc = setByPath(updatedDoc, mutation.cadPath, mutation.value);
       }
 
-      // Re-render HTML
-      const rendered = renderArticle({
-        document: updatedDoc,
-        htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
-        templateVersion: TEMPLATE_VERSION,
-      });
+      // For imports: keep the imported HTML, don't re-render from synthetic doc
+      let newHtml: string;
+      if (state.isImportedHtml) {
+        newHtml = state.currentHtml;
+      } else {
+        const rendered = renderArticle({
+          document: updatedDoc,
+          htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
+          templateVersion: TEMPLATE_VERSION,
+        });
+        newHtml = rendered.html;
+      }
 
       // Re-run QA
-      const dom = new BrowserDomAdapter(rendered.html);
-      const qaScore = runQAChecks(updatedDoc, rendered.html, dom);
+      const dom = new BrowserDomAdapter(newHtml);
+      const qaScore = runQAChecks(updatedDoc, newHtml, dom, {
+        isImported: state.isImportedHtml,
+      });
 
       set({
         currentDocument: updatedDoc,
-        currentHtml: rendered.html,
+        currentHtml: newHtml,
         undoStack: pushToStack(state.undoStack, undoEntry),
         redoStack: [],
         qaScore,
@@ -471,9 +487,9 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         appliedSummaries.push(result.summary);
       }
 
-      // Re-render if any Tier 1 fixes applied
+      // Re-render if any Tier 1 fixes applied (but not for imports — keep imported HTML)
       let newHtml = state.currentHtml;
-      if (appliedSummaries.length > 0) {
+      if (appliedSummaries.length > 0 && !state.isImportedHtml) {
         const rendered = renderArticle({
           document: updatedDoc,
           htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
@@ -484,7 +500,9 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
 
       // Re-run QA
       const dom = new BrowserDomAdapter(newHtml);
-      const qaScore = runQAChecks(updatedDoc, newHtml, dom);
+      const qaScore = runQAChecks(updatedDoc, newHtml, dom, {
+        isImported: state.isImportedHtml,
+      });
 
       set({
         currentDocument: updatedDoc,
@@ -522,6 +540,7 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
             document: state.currentDocument,
             html: state.currentHtml,
             checkIds,
+            ...(state.isImportedHtml && { isImported: true }),
           }),
           signal: controller.signal,
         });
@@ -602,6 +621,7 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
             document: state.currentDocument,
             html: state.currentHtml,
             htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
+            ...(state.isImportedHtml && { skipRender: true }),
           }),
         });
 
@@ -752,6 +772,57 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         });
       }
     },
+
+    // === HTML Import ===
+
+    importHtml: (html: string, source: 'paste' | 'upload', filename?: string) => {
+      const state = get();
+
+      // Push undo if there's an existing document
+      let newUndoStack = state.undoStack;
+      if (state.currentDocument) {
+        const entry = createUndoEntry(
+          state.currentDocument,
+          state.currentHtml,
+          state.htmlOverrides,
+          "Before HTML import"
+        );
+        newUndoStack = pushToStack(state.undoStack, entry);
+      }
+
+      // Extract metadata from the imported HTML
+      const metadata = extractMetadataFromHtmlBrowser(html);
+
+      // Build synthetic canonical doc if we have a selected article
+      let syntheticDoc: CanonicalArticleDocument | null = null;
+      if (state.selectedArticle) {
+        syntheticDoc = buildSyntheticDocument(metadata, state.selectedArticle);
+      }
+
+      set({
+        currentHtml: html,
+        currentDocument: syntheticDoc,
+        isImportedHtml: true,
+        importSource: source,
+        editingMode: "chat",
+        previewMode: "preview",
+        undoStack: newUndoStack,
+        redoStack: [],
+        qaScore: null,
+        isScorecardOpen: false,
+        statusMessage: filename ? `Imported: ${filename}` : "HTML imported",
+      });
+    },
+
+    clearImport: () => {
+      set({
+        isImportedHtml: false,
+        importSource: null,
+      });
+    },
+
+    // Writing style
+    setSelectedStyleId: (id: number | null) => set({ selectedStyleId: id }),
 
     // Reset
     resetEditor: () => set(initialState),

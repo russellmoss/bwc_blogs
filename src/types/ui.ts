@@ -87,6 +87,13 @@ export interface ArticleEditorState {
   isPublishing: boolean;
   finalizationError: string | null;
   lastFinalizedVersion: number | null;
+
+  // HTML import
+  isImportedHtml: boolean;
+  importSource: 'paste' | 'upload' | null;
+
+  // Writing style
+  selectedStyleId: number | null;
 }
 
 export interface ArticleEditorActions {
@@ -149,6 +156,13 @@ export interface ArticleEditorActions {
   finalizeArticle: () => Promise<void>;
   publishArticle: (url: string) => Promise<void>;
   loadFinalizedArticle: (articleId: number) => Promise<void>;
+
+  // HTML import
+  importHtml: (html: string, source: 'paste' | 'upload', filename?: string) => void;
+  clearImport: () => void;
+
+  // Writing style
+  setSelectedStyleId: (id: number | null) => void;
 
   // Reset
   resetEditor: () => void;

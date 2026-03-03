@@ -27,7 +27,8 @@ export async function generateArticle(
   emit("status", { message: "Assembling system prompt..." });
   const { systemPrompt, layers, totalTokenEstimate } = await assembleSystemPrompt(
     request.articleId,
-    request.photoManifest
+    request.photoManifest,
+    request.selectedStyleId ?? null
   );
   emit("status", {
     message: `System prompt assembled (${layers.length} layers, ~${totalTokenEstimate} tokens)`,

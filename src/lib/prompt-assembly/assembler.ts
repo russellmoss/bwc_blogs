@@ -8,6 +8,7 @@ import { buildLayerBrief } from "./layer-brief";
 import { buildLayerKbContext } from "./layer-kb-context";
 import { buildLayerLinkGraph } from "./layer-link-graph";
 import { buildLayerPhotoManifest } from "./layer-photo-manifest";
+import { buildLayerWritingVoice } from "./layer-writing-voice";
 
 export interface AssembledPrompt {
   systemPrompt: string;
@@ -36,7 +37,8 @@ After searching, embed the found URLs directly in the externalLinks array.
 
 export async function assembleSystemPrompt(
   articleId: number,
-  photoManifest: PhotoManifest | null
+  photoManifest: PhotoManifest | null,
+  styleId: number | null = null
 ): Promise<AssembledPrompt> {
   // Static layers (cached)
   const layerSop = buildLayerSop();
@@ -68,10 +70,14 @@ export async function assembleSystemPrompt(
 
   const layerPhotoManifest = buildLayerPhotoManifest(photoManifest);
 
+  // Session-scoped: writing voice (Layer 8)
+  const layerWritingVoice = await buildLayerWritingVoice(styleId);
+
   const layers: PromptLayer[] = [
     layerSop,
     layerStyleGuide,
     layerTemplateRef,
+    ...(layerWritingVoice ? [layerWritingVoice] : []),
     layerBrief,
     layerKbContext,
     layerLinkGraph,

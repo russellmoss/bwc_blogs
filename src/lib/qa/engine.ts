@@ -8,6 +8,7 @@ import { runImageChecks } from "./checks/image-checks";
 import { runContentChecks } from "./checks/content-checks";
 import { runSchemaChecks } from "./checks/schema-checks";
 import { fleschKincaidGrade } from "./readability";
+import { adjustForImport } from "./import-adjustments";
 
 // ================================================================
 // DOM Adapter interface — abstracts browser DOMParser vs cheerio
@@ -194,6 +195,14 @@ function generateFixSuggestion(checkId: string, message: string): string | null 
 // Main QA Engine
 // ================================================================
 
+// ================================================================
+// QA Run Options
+// ================================================================
+
+export interface QARunOptions {
+  isImported?: boolean;
+}
+
 /**
  * Run all QA checks against a canonical document and its rendered HTML.
  * This is the main entry point — call from client (with BrowserDomAdapter)
@@ -202,7 +211,8 @@ function generateFixSuggestion(checkId: string, message: string): string | null 
 export function runQAChecks(
   doc: CanonicalArticleDocument,
   html: string,
-  dom: DomAdapter
+  dom: DomAdapter,
+  options?: QARunOptions
 ): QAScore {
   const allResults: QAResult[] = [];
   const coveredCheckIds = new Set<string>();
@@ -312,12 +322,17 @@ export function runQAChecks(
     );
   }
 
-  // 5. Calculate score
-  const total = allResults.reduce((sum, r) => sum + r.score, 0);
-  const possible = allResults.length;
-  const failCount = allResults.filter((r) => !r.passed && r.check.severity === "fail").length;
-  const warnCount = allResults.filter((r) => !r.passed && r.check.severity === "warn").length;
-  const passCount = allResults.filter((r) => r.passed).length;
+  // 5. Apply import adjustments if needed
+  const finalResults = options?.isImported
+    ? adjustForImport(allResults)
+    : allResults;
+
+  // 6. Calculate score
+  const total = finalResults.reduce((sum, r) => sum + r.score, 0);
+  const possible = finalResults.length;
+  const failCount = finalResults.filter((r) => !r.passed && r.check.severity === "fail").length;
+  const warnCount = finalResults.filter((r) => !r.passed && r.check.severity === "warn").length;
+  const passCount = finalResults.filter((r) => r.passed).length;
 
   return {
     total,
@@ -325,7 +340,7 @@ export function runQAChecks(
     failCount,
     warnCount,
     passCount,
-    results: allResults,
+    results: finalResults,
     canFinalize: failCount === 0,
   };
 }

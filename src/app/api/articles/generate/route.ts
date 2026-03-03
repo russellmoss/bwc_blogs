@@ -22,6 +22,7 @@ const GenerateRequestSchema = z.object({
     heroPhotoId: z.number().nullable(),
     totalAvailable: z.number(),
   }).nullable().default(null),
+  selectedStyleId: z.number().int().positive().nullable().optional().default(null),
 });
 
 function encodeSSE(event: StreamEvent): string {
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
       conversationHistory: parsed.data.conversationHistory,
       currentDocument: parsed.data.currentDocument as GenerateArticleRequest["currentDocument"],
       photoManifest,
+      selectedStyleId: parsed.data.selectedStyleId,
     };
 
     // Create a ReadableStream that emits SSE events

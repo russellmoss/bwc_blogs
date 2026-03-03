@@ -51,6 +51,7 @@ const FixRequestSchema = z.object({
   document: z.record(z.string(), z.unknown()),
   html: z.string().min(1),
   checkIds: z.array(z.string()).min(1).max(20),
+  isImported: z.boolean().optional().default(false),
 });
 
 interface FixResponseData {
@@ -107,7 +108,7 @@ export async function POST(request: Request) {
     }
 
     let doc = docParsed.data as CanonicalArticleDocument;
-    const { checkIds } = parsed.data;
+    const { checkIds, isImported } = parsed.data;
 
     // 4. Split into tiers
     const tier1Ids = checkIds.filter((id) => getFixTier(id) === 1);
@@ -136,7 +137,7 @@ export async function POST(request: Request) {
     if (tier2Ids.length > 0) {
       // Run a quick QA to get current result messages for context
       const preDom = new CheerioDomAdapter(parsed.data.html);
-      const preQaScore = runQAChecks(doc, parsed.data.html, preDom);
+      const preQaScore = runQAChecks(doc, parsed.data.html, preDom, { isImported });
 
       // Build prompt
       const { system, user } = buildPatchPrompt(doc, tier2Ids, preQaScore);
@@ -186,16 +187,22 @@ export async function POST(request: Request) {
     // 6b. Coerce any string photoIds introduced by Claude's patch
     coerceImageFields(doc as unknown as Record<string, unknown>);
 
-    // 7. Re-render HTML
-    const rendered = renderArticle({
-      document: doc,
-      htmlOverrides: null,
-      templateVersion: TEMPLATE_VERSION,
-    });
+    // 7. Re-render HTML (for imports, keep the original HTML — don't re-render from synthetic doc)
+    let finalHtml: string;
+    if (isImported) {
+      finalHtml = parsed.data.html;
+    } else {
+      const rendered = renderArticle({
+        document: doc,
+        htmlOverrides: null,
+        templateVersion: TEMPLATE_VERSION,
+      });
+      finalHtml = rendered.html;
+    }
 
     // 8. Re-run QA
-    const dom = new CheerioDomAdapter(rendered.html);
-    const qaScore = runQAChecks(doc, rendered.html, dom);
+    const dom = new CheerioDomAdapter(finalHtml);
+    const qaScore = runQAChecks(doc, finalHtml, dom, { isImported });
 
     const failedChecks = qaScore.results.filter((r) => !r.passed).map((r) => `${r.check.id}: ${r.message}`);
     console.log("[qa-fix] Post-fix QA:", qaScore.total, "/", qaScore.possible,
@@ -209,7 +216,7 @@ export async function POST(request: Request) {
       success: true,
       data: {
         document: doc,
-        html: rendered.html,
+        html: finalHtml,
         qaScore,
         appliedFixes: {
           tier1: tier1Applied,

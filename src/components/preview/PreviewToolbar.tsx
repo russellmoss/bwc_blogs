@@ -6,6 +6,8 @@ import { useArticleStore, selectEffectiveValidation, selectCanUndo, selectCanRed
 import { VersionNavigator } from "./VersionNavigator";
 import { FinalizeButton } from "@/components/finalization/FinalizeButton";
 import { PublishButton } from "@/components/finalization/PublishButton";
+import { ImportButton } from "@/components/import/ImportButton";
+import { StyleSelector } from "@/components/styles/StyleSelector";
 
 function ToggleButton({
   active,
@@ -58,6 +60,7 @@ export function PreviewToolbar() {
   const { runQa, setIsScorecardOpen } = useArticleStore();
   const currentDocument = useArticleStore((s) => s.currentDocument);
   const lastFinalizedVersion = useArticleStore((s) => s.lastFinalizedVersion);
+  const isImportedHtml = useArticleStore((s) => s.isImportedHtml);
   const [showDetails, setShowDetails] = useState(false);
 
   // Global keyboard shortcuts for undo/redo
@@ -128,14 +131,28 @@ export function PreviewToolbar() {
           active={editingMode === "chat"}
           onClick={() => setEditingMode("chat")}
           icon={<MessageSquare style={iconSize} />}
-          label="Chat"
+          label={isImportedHtml ? "Preview" : "Chat"}
         />
-        <ToggleButton
-          active={editingMode === "canvas"}
-          onClick={() => setEditingMode("canvas")}
-          icon={<Pencil style={iconSize} />}
-          label="Canvas"
-        />
+        <button
+          onClick={() => !isImportedHtml && setEditingMode("canvas")}
+          disabled={isImportedHtml}
+          title={isImportedHtml ? "Canvas editing unavailable for imported HTML" : "Canvas"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "4px 10px",
+            fontSize: "12px",
+            background: editingMode === "canvas" ? "#bc9b5d" : "#ffffff",
+            color: isImportedHtml ? "#ccc" : editingMode === "canvas" ? "#ffffff" : "#414141",
+            border: "none",
+            cursor: isImportedHtml ? "not-allowed" : "pointer",
+            opacity: isImportedHtml ? 0.5 : 1,
+          }}
+        >
+          <Pencil style={iconSize} />
+          Canvas
+        </button>
         <ToggleButton
           active={editingMode === "html"}
           onClick={() => setEditingMode("html")}
@@ -143,6 +160,9 @@ export function PreviewToolbar() {
           label="HTML"
         />
       </div>
+
+      {/* Writing style selector */}
+      <StyleSelector />
 
       {/* Undo / Redo */}
       <div style={{ display: "flex", gap: "2px" }}>
@@ -184,6 +204,28 @@ export function PreviewToolbar() {
 
       {/* Version history navigator */}
       <VersionNavigator />
+
+      {/* Import button */}
+      <ImportButton />
+
+      {/* Imported HTML badge */}
+      {isImportedHtml && (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "2px 8px",
+            fontSize: "11px",
+            fontWeight: 600,
+            background: "#fefce8",
+            color: "#a16207",
+            borderRadius: "999px",
+            border: "1px solid #fde047",
+          }}
+        >
+          Imported HTML
+        </span>
+      )}
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

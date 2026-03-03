@@ -103,18 +103,21 @@ export async function commitFinalization(
   document: CanonicalArticleDocument,
   htmlOverrides: HtmlOverride[] | null,
   userEmail: string,
-  notes?: string
+  notes?: string,
+  preRenderedOutput?: RendererOutput
 ): Promise<CommitResult> {
-  // 1. Final render
-  const rendererOutput = renderArticle({
+  // 1. Final render (skip if pre-rendered HTML was provided for imports)
+  const rendererOutput = preRenderedOutput || renderArticle({
     document,
     htmlOverrides,
     templateVersion: TEMPLATE_VERSION,
   });
 
-  // 2. Server-side QA
+  // 2. Server-side QA (use import mode when pre-rendered)
   const dom = new CheerioDomAdapter(rendererOutput.html);
-  const qaScore = runQAChecks(document, rendererOutput.html, dom);
+  const qaScore = runQAChecks(document, rendererOutput.html, dom, {
+    isImported: !!preRenderedOutput,
+  });
 
   if (!qaScore.canFinalize) {
     const err = new Error(

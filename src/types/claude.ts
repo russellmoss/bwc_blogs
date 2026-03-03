@@ -45,6 +45,7 @@ export interface GenerateArticleRequest {
   conversationHistory: ConversationMessage[];
   currentDocument: CanonicalArticleDocument | null;
   photoManifest: PhotoManifest | null;
+  selectedStyleId?: number | null;
 }
 
 export interface GenerateArticleResponse {

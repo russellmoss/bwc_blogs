@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/session";
 import { promotePendingPhotos, commitFinalization } from "@/lib/finalization";
 import type { CanonicalArticleDocument } from "@/types/article";
-import type { HtmlOverride } from "@/types/renderer";
+import type { HtmlOverride, RendererOutput } from "@/types/renderer";
 import { z } from "zod";
 
 const FinalizeSchema = z.object({
@@ -14,6 +14,7 @@ const FinalizeSchema = z.object({
     reason: z.string(),
   })).nullable().default(null),
   notes: z.string().optional(),
+  skipRender: z.boolean().optional().default(false),
 });
 
 export async function POST(
@@ -37,16 +38,31 @@ export async function POST(
     const document = parsed.data.document as unknown as CanonicalArticleDocument;
     const htmlOverrides = parsed.data.htmlOverrides as HtmlOverride[] | null;
 
-    // Step 1: Promote photos to CDN
+    // Step 1: Promote photos to CDN (harmless no-op for imports)
     const { updatedDocument, photosUploaded } = await promotePendingPhotos(document);
 
-    // Step 2: Commit (includes final render + QA gate + atomic DB write)
+    // Step 2: Build pre-rendered output for import mode (skip re-render)
+    let preRenderedOutput: RendererOutput | undefined;
+    if (parsed.data.skipRender) {
+      // For imported HTML, use the submitted HTML directly
+      const htmlContent = parsed.data.html;
+      preRenderedOutput = {
+        html: htmlContent,
+        metaTitle: String(updatedDocument.metaTitle || ""),
+        metaDescription: String(updatedDocument.metaDescription || ""),
+        schemaJson: "",
+        wordCount: htmlContent.split(/\s+/).filter(Boolean).length,
+      };
+    }
+
+    // Step 3: Commit (includes final render + QA gate + atomic DB write)
     const result = await commitFinalization(
       articleId,
       updatedDocument,
       htmlOverrides,
       user.email,
-      parsed.data.notes
+      parsed.data.notes,
+      preRenderedOutput
     );
 
     return NextResponse.json({

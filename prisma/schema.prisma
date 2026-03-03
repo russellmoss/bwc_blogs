@@ -210,3 +210,22 @@ model LeadEvent {
 
   @@map("lead_events")
 }
+
+// ============================================================
+// WRITING STYLES
+// ============================================================
+
+model WritingStyle {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  content     String
+  isDefault   Boolean  @default(false) @map("is_default")
+  isSeed      Boolean  @default(false) @map("is_seed")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("writing_styles")
+}

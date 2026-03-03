@@ -7,3 +7,4 @@ export { buildLayerBrief } from "./layer-brief";
 export { buildLayerKbContext } from "./layer-kb-context";
 export { buildLayerLinkGraph } from "./layer-link-graph";
 export { buildLayerPhotoManifest } from "./layer-photo-manifest";
+export { buildLayerWritingVoice } from "./layer-writing-voice";

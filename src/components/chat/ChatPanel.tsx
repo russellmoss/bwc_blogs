@@ -17,6 +17,7 @@ export function ChatPanel() {
     currentDocument,
     conversationHistory,
     photoManifest,
+    selectedStyleId,
     addUserMessage,
     startGeneration,
     appendStreamingText,
@@ -120,6 +121,7 @@ export function ChatPanel() {
             conversationHistory: conversationHistory,
             currentDocument: currentDocument,
             photoManifest,
+            selectedStyleId,
           }),
         });
 
