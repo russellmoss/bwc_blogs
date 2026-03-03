@@ -115,7 +115,7 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 | `/api/photos/[id]` | GET, PATCH | Get / update photo metadata |
 | `/api/photos/describe` | POST | Claude generates alt-text descriptions from image |
 | `/api/photos/upload` | POST | Upload photo to Cloudinary CDN |
-| `/api/photos/drive-upload` | POST | Download from Google Drive → upload to Cloudinary |
+| `/api/photos/drive-upload` | POST | Direct file upload to Cloudinary — UI file picker → CDN + AI describe |
 
 ### Users (2 routes)
 
