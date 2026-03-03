@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2, UserPlus, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Trash2, UserPlus, Eye, EyeOff, KeyRound } from "lucide-react";
 
 function PasswordInput({ value, onChange, placeholder, required, minLength, style }: {
   value: string;
@@ -215,6 +215,12 @@ function UserManagementSection() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
 
+  // Reset password
+  const [resetUserId, setResetUserId] = useState<number | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetMessage, setResetMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch("/api/users");
@@ -300,6 +306,41 @@ function UserManagementSection() {
       }
     } catch {
       alert("Network error");
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetUserId) return;
+    setResetMessage(null);
+
+    if (resetPassword.length < 8) {
+      setResetMessage({ type: "error", text: "Password must be at least 8 characters" });
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/users/${resetUserId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: resetPassword }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setResetMessage({ type: "success", text: "Password reset successfully" });
+        setResetPassword("");
+        setTimeout(() => {
+          setResetUserId(null);
+          setResetMessage(null);
+        }, 2000);
+      } else {
+        setResetMessage({ type: "error", text: data.error?.message || "Failed to reset password" });
+      }
+    } catch {
+      setResetMessage({ type: "error", text: "Network error" });
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -419,65 +460,176 @@ function UserManagementSection() {
           </thead>
           <tbody>
             {users.map((user) => (
-              <tr key={user.id} style={{ borderBottom: "1px solid #f3f3f3" }}>
-                <td style={{ padding: "8px 4px", color: "#000" }}>{user.email}</td>
-                <td style={{ padding: "8px 4px", color: "#414141" }}>{user.name}</td>
-                <td style={{ padding: "8px 4px" }}>
-                  <span style={{
-                    display: "inline-block",
-                    padding: "2px 8px",
-                    borderRadius: "999px",
-                    fontSize: "11px",
-                    fontWeight: 500,
-                    background: user.isActive ? "#f0fdf4" : "#fef2f2",
-                    color: user.isActive ? "#15803d" : "#b91c1c",
-                  }}>
-                    {user.isActive ? "Active" : "Inactive"}
-                  </span>
-                </td>
-                <td style={{ padding: "8px 4px", textAlign: "right" }}>
-                  {user.isActive ? (
-                    <button
-                      onClick={() => handleDelete(user.id, user.email)}
-                      title="Deactivate user"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        padding: "4px 8px",
-                        background: "transparent",
-                        border: "1px solid #e8e6e6",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        color: "#b91c1c",
-                      }}
-                    >
-                      <Trash2 style={{ width: "12px", height: "12px" }} />
-                      Deactivate
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleReactivate(user.id)}
-                      title="Reactivate user"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        padding: "4px 8px",
-                        background: "transparent",
-                        border: "1px solid #e8e6e6",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "12px",
-                        color: "#15803d",
-                      }}
-                    >
-                      Reactivate
-                    </button>
-                  )}
-                </td>
-              </tr>
+              <React.Fragment key={user.id}>
+                <tr style={{ borderBottom: resetUserId === user.id ? "none" : "1px solid #f3f3f3" }}>
+                  <td style={{ padding: "8px 4px", color: "#000" }}>{user.email}</td>
+                  <td style={{ padding: "8px 4px", color: "#414141" }}>{user.name}</td>
+                  <td style={{ padding: "8px 4px" }}>
+                    <span style={{
+                      display: "inline-block",
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 500,
+                      background: user.isActive ? "#f0fdf4" : "#fef2f2",
+                      color: user.isActive ? "#15803d" : "#b91c1c",
+                    }}>
+                      {user.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td style={{ padding: "8px 4px", textAlign: "right" }}>
+                    <div style={{ display: "inline-flex", gap: "6px" }}>
+                      <button
+                        onClick={() => {
+                          if (resetUserId === user.id) {
+                            setResetUserId(null);
+                            setResetPassword("");
+                            setResetMessage(null);
+                          } else {
+                            setResetUserId(user.id);
+                            setResetPassword("");
+                            setResetMessage(null);
+                          }
+                        }}
+                        title="Reset password"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          padding: "4px 8px",
+                          background: resetUserId === user.id ? "#f7f7f7" : "transparent",
+                          border: "1px solid #e8e6e6",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "12px",
+                          color: "#414141",
+                        }}
+                      >
+                        <KeyRound style={{ width: "12px", height: "12px" }} />
+                        Reset Password
+                      </button>
+                      {user.isActive ? (
+                        <button
+                          onClick={() => handleDelete(user.id, user.email)}
+                          title="Deactivate user"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "4px 8px",
+                            background: "transparent",
+                            border: "1px solid #e8e6e6",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            color: "#b91c1c",
+                          }}
+                        >
+                          <Trash2 style={{ width: "12px", height: "12px" }} />
+                          Deactivate
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleReactivate(user.id)}
+                          title="Reactivate user"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "4px 8px",
+                            background: "transparent",
+                            border: "1px solid #e8e6e6",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            color: "#15803d",
+                          }}
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                {resetUserId === user.id && (
+                  <tr style={{ borderBottom: "1px solid #f3f3f3" }}>
+                    <td colSpan={4} style={{ padding: "8px 4px 12px" }}>
+                      <form
+                        onSubmit={handleResetPassword}
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          alignItems: "center",
+                          padding: "10px 12px",
+                          background: "#f7f7f7",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        <span style={{ fontSize: "12px", color: "#414141", whiteSpace: "nowrap" }}>
+                          New password for <strong>{user.email}</strong>:
+                        </span>
+                        <PasswordInput
+                          value={resetPassword}
+                          onChange={(e) => setResetPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          placeholder="Min 8 chars"
+                          style={{
+                            width: "200px",
+                            padding: "6px 10px",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                            fontSize: "13px",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                        <button
+                          type="submit"
+                          disabled={resetting}
+                          style={{
+                            padding: "6px 14px",
+                            background: "#000",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            fontSize: "12px",
+                            fontWeight: 500,
+                            cursor: resetting ? "not-allowed" : "pointer",
+                            opacity: resetting ? 0.5 : 1,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {resetting ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setResetUserId(null); setResetPassword(""); setResetMessage(null); }}
+                          style={{
+                            padding: "6px 14px",
+                            background: "transparent",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            color: "#414141",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        {resetMessage && (
+                          <span style={{
+                            fontSize: "12px",
+                            color: resetMessage.type === "success" ? "#15803d" : "#b91c1c",
+                          }}>
+                            {resetMessage.text}
+                          </span>
+                        )}
+                      </form>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
