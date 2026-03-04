@@ -76,5 +76,23 @@
       }
     ],
     "narrativeResults": []
+  },
+  {
+    "timestamp": "2026-03-04T00:40:59.013Z",
+    "commitHash": "6c51b21",
+    "mode": "auto-fix",
+    "engine": "api",
+    "generatorResults": [
+      {
+        "file": "npm run gen:api-routes",
+        "action": "regenerated"
+      }
+    ],
+    "narrativeResults": [
+      {
+        "file": "docs\\ARCHITECTURE.md",
+        "action": "narrative updated by api"
+      }
+    ]
   }
 ]

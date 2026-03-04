@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
-import { User, Settings, LogOut, ChevronDown, Image, ExternalLink, PenTool, LayoutGrid } from "lucide-react";
+import { User, Settings, LogOut, ChevronDown, Image, ExternalLink, PenTool, LayoutGrid, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { ArticleSelector } from "./ArticleSelector";
 
@@ -139,6 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isComposer = pathname === "/dashboard";
   const isContentMap = pathname === "/dashboard/content-map";
   const isPhotos = pathname === "/dashboard/photos";
+  const isGetStarted = pathname === "/dashboard/get-started";
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
@@ -213,6 +214,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Image style={{ width: "14px", height: "14px" }} />
           Photos
+        </Link>
+        <Link
+          href="/dashboard/get-started"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "4px 12px",
+            fontSize: "13px",
+            fontWeight: 500,
+            textDecoration: "none",
+            borderRadius: "100px",
+            background: isGetStarted ? "#3b2f20" : "#bc9b5d",
+            color: "#ffffff",
+          }}
+        >
+          <BookOpen style={{ width: "14px", height: "14px" }} />
+          Get Started
         </Link>
 
         {process.env.NEXT_PUBLIC_GOOGLE_DRIVE_PHOTOS_FOLDER_URL && (
