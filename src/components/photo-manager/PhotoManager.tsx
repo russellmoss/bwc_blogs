@@ -61,6 +61,10 @@ export function PhotoManager() {
     setPhotos((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }
 
+  function handlePhotoDelete(id: number) {
+    setPhotos((prev) => prev.filter((p) => p.id !== id));
+  }
+
   async function handleCatalog() {
     setCataloging(true);
     try {
@@ -350,12 +354,12 @@ export function PhotoManager() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "14px",
           }}
         >
           {filtered.map((photo) => (
-            <PhotoCard key={photo.id} photo={photo} onUpdate={handlePhotoUpdate} />
+            <PhotoCard key={photo.id} photo={photo} onUpdate={handlePhotoUpdate} onDelete={handlePhotoDelete} />
           ))}
         </div>
       )}

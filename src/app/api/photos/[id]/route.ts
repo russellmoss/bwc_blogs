@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth/session";
+import { getCloudinaryClient } from "@/lib/cloudinary/client";
 import { z } from "zod";
 
 const UpdatePhotoSchema = z.object({
@@ -61,6 +62,92 @@ export async function GET(
     }
 
     return NextResponse.json({ success: true, data: photo });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    if (message === "AUTH_REQUIRED") {
+      return NextResponse.json(
+        { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
+        { status: 401 }
+      );
+    }
+    if (message === "AUTH_FORBIDDEN") {
+      return NextResponse.json(
+        { success: false, error: { code: "AUTH_FORBIDDEN", message: "Admin access required" } },
+        { status: 403 }
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: { code: "INTERNAL_ERROR", message } },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/photos/[id] — Delete a photo (admin only)
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireRole("admin");
+    const { id } = await params;
+    const photoId = parseInt(id, 10);
+
+    const photo = await prisma.photo.findUnique({
+      where: { id: photoId },
+      select: {
+        id: true,
+        cloudinaryPublicId: true,
+        articlePhotos: {
+          select: {
+            position: true,
+            article: { select: { id: true, title: true } },
+          },
+        },
+      },
+    });
+
+    if (!photo) {
+      return NextResponse.json(
+        { success: false, error: { code: "NOT_FOUND", message: "Photo not found" } },
+        { status: 404 }
+      );
+    }
+
+    // Block deletion if photo is assigned to articles
+    if (photo.articlePhotos.length > 0) {
+      const assignments = photo.articlePhotos.map((ap) => ({
+        articleId: ap.article.id,
+        title: ap.article.title,
+        position: ap.position,
+      }));
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "PHOTO_IN_USE",
+            message: `Photo is assigned to ${photo.articlePhotos.length} article(s). Unassign first.`,
+            assignments,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    // Delete Cloudinary asset if present
+    if (photo.cloudinaryPublicId) {
+      try {
+        const cloudinary = getCloudinaryClient();
+        await cloudinary.uploader.destroy(photo.cloudinaryPublicId);
+      } catch (cdnError) {
+        console.error("Failed to delete Cloudinary asset:", cdnError);
+        // Continue with DB deletion even if CDN cleanup fails
+      }
+    }
+
+    await prisma.photo.delete({ where: { id: photoId } });
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message === "AUTH_REQUIRED") {

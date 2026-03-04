@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Sparkles, Upload, Check, X, Loader2 } from "lucide-react";
+import { Pencil, Sparkles, Upload, Check, X, Loader2, Trash2 } from "lucide-react";
 
 interface PhotoData {
   id: number;
@@ -21,15 +21,26 @@ interface PhotoData {
   uploadedToCdn: boolean;
 }
 
+interface Assignment {
+  articleId: number;
+  title: string;
+  position: string | null;
+}
+
 interface PhotoCardProps {
   photo: PhotoData;
   onUpdate: (photo: PhotoData) => void;
+  onDelete: (photoId: number) => void;
 }
 
-export function PhotoCard({ photo, onUpdate }: PhotoCardProps) {
+export function PhotoCard({ photo, onUpdate, onDelete }: PhotoCardProps) {
   const [editing, setEditing] = useState(false);
   const [describing, setDescribing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [unassignMode, setUnassignMode] = useState(false);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [unassigning, setUnassigning] = useState<number | null>(null);
   const [form, setForm] = useState({
     description: photo.description || "",
     altText: photo.altText || "",
@@ -95,6 +106,46 @@ export function PhotoCard({ photo, onUpdate }: PhotoCardProps) {
     }
   }
 
+  async function handleDelete() {
+    if (!window.confirm(`Delete "${photo.filename}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/photos/${photo.id}`, { method: "DELETE" });
+      const data = await res.json();
+
+      if (res.status === 409 && data.error?.assignments) {
+        // Photo is in use — switch to unassign mode
+        setAssignments(data.error.assignments);
+        setUnassignMode(true);
+        return;
+      }
+
+      if (data.success) {
+        onDelete(photo.id);
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleUnassign(articleId: number) {
+    setUnassigning(articleId);
+    try {
+      const res = await fetch(`/api/photos/${photo.id}/assignments/${articleId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAssignments((prev) => prev.filter((a) => a.articleId !== articleId));
+      }
+    } finally {
+      setUnassigning(null);
+    }
+  }
+
   return (
     <div
       style={{
@@ -155,9 +206,70 @@ export function PhotoCard({ photo, onUpdate }: PhotoCardProps) {
             {photo.category}
           </span>
         )}
-        <div style={{ fontSize: "12px", color: "#666", marginBottom: "8px", lineHeight: 1.4, maxHeight: "3.4em", overflow: "hidden" }}>
+        <div style={{ fontSize: "13px", color: "#666", marginBottom: "4px", lineHeight: 1.4, maxHeight: "5.6em", overflow: "hidden" }}>
           {photo.description || "No description"}
         </div>
+        {photo.altText && !editing && (
+          <div style={{ fontSize: "12px", color: "#999", marginBottom: "8px", lineHeight: 1.4, fontStyle: "italic" }}>
+            Alt: {photo.altText}
+          </div>
+        )}
+        {!photo.altText && !editing && <div style={{ marginBottom: "8px" }} />}
+
+        {/* Unassign Mode */}
+        {unassignMode && (
+          <div style={{ background: "#fef3cd", border: "1px solid #ffc107", borderRadius: "6px", padding: "10px", marginBottom: "8px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "#856404", marginBottom: "6px" }}>
+              This photo is used by {assignments.length} article(s). Unassign first:
+            </div>
+            {assignments.map((a) => (
+              <div
+                key={a.articleId}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", padding: "3px 0", borderBottom: "1px solid #f0e6c0" }}
+              >
+                <span style={{ color: "#333" }}>
+                  {a.title || `Article #${a.articleId}`}
+                  {a.position && <span style={{ color: "#888" }}> — {a.position}</span>}
+                </span>
+                <button
+                  onClick={() => handleUnassign(a.articleId)}
+                  disabled={unassigning === a.articleId}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#dc3545",
+                    padding: "2px",
+                    opacity: unassigning === a.articleId ? 0.5 : 1,
+                  }}
+                  title="Unassign from this article"
+                >
+                  {unassigning === a.articleId
+                    ? <Loader2 style={{ width: "12px", height: "12px", animation: "spin 1s linear infinite" }} />
+                    : <X style={{ width: "14px", height: "14px" }} />}
+                </button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: "6px", marginTop: "8px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setUnassignMode(false)}
+                style={{ fontSize: "11px", padding: "3px 8px", background: "transparent", border: "1px solid #ddd", borderRadius: "4px", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              {assignments.length === 0 && (
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  style={{ fontSize: "11px", padding: "3px 8px", background: "#dc3545", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", display: "flex", alignItems: "center", gap: "3px" }}
+                >
+                  {deleting ? <Loader2 style={{ width: "11px", height: "11px", animation: "spin 1s linear infinite" }} /> : <Trash2 style={{ width: "11px", height: "11px" }} />}
+                  Delete Now
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Edit Form (expanded) */}
         {editing && (
@@ -166,15 +278,15 @@ export function PhotoCard({ photo, onUpdate }: PhotoCardProps) {
             <textarea
               value={form.altText}
               onChange={(e) => setForm({ ...form, altText: e.target.value })}
-              rows={2}
-              style={{ width: "100%", fontSize: "12px", border: "1px solid #ddd", borderRadius: "4px", padding: "4px", resize: "vertical", marginBottom: "6px" }}
+              rows={3}
+              style={{ width: "100%", fontSize: "13px", border: "1px solid #ddd", borderRadius: "4px", padding: "6px", resize: "vertical", marginBottom: "6px" }}
             />
             <label style={{ fontSize: "11px", color: "#888", display: "block", marginBottom: "2px" }}>Description</label>
             <textarea
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              rows={2}
-              style={{ width: "100%", fontSize: "12px", border: "1px solid #ddd", borderRadius: "4px", padding: "4px", resize: "vertical", marginBottom: "6px" }}
+              rows={4}
+              style={{ width: "100%", fontSize: "13px", border: "1px solid #ddd", borderRadius: "4px", padding: "6px", resize: "vertical", marginBottom: "6px" }}
             />
             <label style={{ fontSize: "11px", color: "#888", display: "block", marginBottom: "2px" }}>Category</label>
             <select
@@ -202,7 +314,7 @@ export function PhotoCard({ photo, onUpdate }: PhotoCardProps) {
         )}
 
         {/* Action buttons */}
-        {!editing && (
+        {!editing && !unassignMode && (
           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
             <button
               onClick={() => setEditing(true)}
@@ -228,6 +340,14 @@ export function PhotoCard({ photo, onUpdate }: PhotoCardProps) {
                 Upload CDN
               </button>
             )}
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              style={{ fontSize: "11px", padding: "3px 8px", background: "transparent", border: "1px solid #f5c6cb", borderRadius: "4px", cursor: "pointer", display: "flex", alignItems: "center", gap: "3px", color: "#dc3545", opacity: deleting ? 0.6 : 1 }}
+            >
+              {deleting ? <Loader2 style={{ width: "11px", height: "11px", animation: "spin 1s linear infinite" }} /> : <Trash2 style={{ width: "11px", height: "11px" }} />}
+              Delete
+            </button>
           </div>
         )}
       </div>

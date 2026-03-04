@@ -107,12 +107,13 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 | `/api/onyx/health` | GET | Checks RAG index health and document count |
 | `/api/onyx/search` | POST | Queries Onyx CE for knowledge base context |
 
-### Photos (5 routes)
+### Photos (6 routes)
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
 | `/api/photos` | GET, POST | List all photos / add new photo record |
-| `/api/photos/[id]` | GET, PATCH | Get / update photo metadata |
+| `/api/photos/[id]` | GET, PATCH, DELETE | Get / update / delete photo metadata |
+| `/api/photos/[id]/assignments/[articleId]` | DELETE | Remove photo-article assignment |
 | `/api/photos/describe` | POST | Claude generates alt-text descriptions from image |
 | `/api/photos/upload` | POST | Upload photo to Cloudinary CDN |
 | `/api/photos/drive-upload` | POST | Direct file upload to Cloudinary — UI file picker → CDN + AI describe |
