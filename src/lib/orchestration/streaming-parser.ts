@@ -258,10 +258,11 @@ function normalizeDocument(obj: Record<string, unknown>, articleId?: number, art
   }
 
   // Flatten any metadata-like wrapper that contains `title`
-  // Claude uses: `metadata`, `articleMetadata`, `seoMetadata`, etc.
+  // Claude uses: `metadata`, `articleMetadata`, `seoMetadata`, `meta`, etc.
   // Runs AFTER wrapper flattening so { article: { metadata: { title } } } is handled
   const metadataKeys = Object.keys(result).filter((k) => {
-    if (!k.toLowerCase().includes("metadata")) return false;
+    const lower = k.toLowerCase();
+    if (lower !== "meta" && !lower.includes("metadata")) return false;
     const val = result[k];
     return typeof val === "object" && val !== null && !Array.isArray(val);
   });
