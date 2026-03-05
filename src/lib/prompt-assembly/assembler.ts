@@ -33,6 +33,20 @@ CRITICAL RULES:
 
 If you need to search the web for external source URLs, use the web_search tool.
 After searching, embed the found URLs directly in the externalLinks array.
+
+ENTITY HYPERLINKING RULE:
+- When you mention any business, organization, winery, vineyard, publication, university,
+  government agency, or named institution, hyperlink its name to its official website URL.
+- Use the web_search tool to verify the correct URL if you are not confident.
+- Do NOT fabricate or guess URLs — if you cannot verify a URL, leave the name unlinked.
+- Wrap the entity name in an <a> tag in the paragraph text:
+  <a href="https://example.com" target="_blank" rel="noopener">Entity Name</a>
+- Add a corresponding entry to the externalLinks array with trustTier and sourceName.
+- Do NOT hyperlink BWC or Bhutan Wine Company — use internal links from the Link Graph instead.
+- Only hyperlink the FIRST mention of each entity per section — do not over-link.
+- Examples of entities to always hyperlink: wineries (Silver Heights, Helan Qingxue),
+  publications (Decanter, Wine Enthusiast, The New York Times), wine organizations
+  (OIV, Wine Scholar Guild), universities, named individuals' professional pages.
 `;
 
 export async function assembleSystemPrompt(
