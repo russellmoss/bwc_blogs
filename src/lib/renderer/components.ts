@@ -160,7 +160,7 @@ export function renderHero(doc: CanonicalArticleDocument): string {
     <p class="meta">
       <time datetime="${doc.publishDate}">${formatDate(doc.publishDate)}</time>
       <span aria-hidden="true"> &middot; </span>
-      <span>By ${doc.author.linkedinUrl ? `<a href="${escapeHtml(doc.author.linkedinUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(doc.author.name)}</a>` : escapeHtml(doc.author.name)}${doc.author.credentials ? `, ${escapeHtml(doc.author.credentials)}` : ""}</span>
+      <span>By ${doc.author.linkedinUrl ? `<a href="${escapeHtml(doc.author.linkedinUrl)}" target="_blank" rel="noopener noreferrer"><span data-cad-path="author.name">${escapeHtml(doc.author.name)}</span></a>` : `<span data-cad-path="author.name">${escapeHtml(doc.author.name)}</span>`}${doc.author.credentials ? `, <span data-cad-path="author.credentials">${escapeHtml(doc.author.credentials)}</span>` : ""}</span>
     </p>
   </header>`;
 }
@@ -189,12 +189,13 @@ export function renderFaq(items: FAQItem[]): string {
 
 /** Render author bio footer */
 export function renderAuthorBio(doc: CanonicalArticleDocument): string {
+  const nameSpan = `<span data-cad-path="author.name">${escapeHtml(doc.author.name)}</span>`;
   const authorName = doc.author.linkedinUrl
-    ? `<a href="${escapeHtml(doc.author.linkedinUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(doc.author.name)}</a>`
-    : escapeHtml(doc.author.name);
+    ? `<a href="${escapeHtml(doc.author.linkedinUrl)}" target="_blank" rel="noopener noreferrer">${nameSpan}</a>`
+    : nameSpan;
 
   let html = `<footer class="bwc-author-bio">
-    <p class="bwc-author-bio__name" data-cad-path="author.name">${authorName}</p>
+    <p class="bwc-author-bio__name">${authorName}</p>
     <p class="bwc-author-bio__credentials" data-cad-path="author.credentials">${escapeHtml(doc.author.credentials)}</p>`;
 
   if (doc.author.bio) {

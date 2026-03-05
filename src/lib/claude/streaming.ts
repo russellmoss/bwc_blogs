@@ -11,6 +11,8 @@ export interface ClaudeStreamCallbacks {
 
 export interface ClaudeStreamResult {
   text: string;
+  /** Individual text blocks from the response (useful when web search splits text) */
+  textBlocks: string[];
   tokensUsed: { input: number; output: number };
   webSearchResults: WebSearchResult[];
 }
@@ -23,6 +25,7 @@ export async function streamGeneration(
   const client = getClaudeClient();
   const tools = getGenerationTools();
   let accumulatedText = "";
+  const textBlocks: string[] = [];
   const webSearchResults: WebSearchResult[] = [];
 
   const stream = client.messages.stream({
@@ -91,20 +94,25 @@ export async function streamGeneration(
     );
   }
 
-  // Extract any text from the final message content blocks
-  // (in case text events didn't fire for all blocks)
-  if (!accumulatedText) {
-    console.log("[claude-streaming] No text from stream events, extracting from finalMessage blocks");
-    for (const block of finalMessage.content) {
-      if (block.type === "text") {
-        accumulatedText += block.text;
-      }
+  // Always extract individual text blocks from the final message
+  // When Claude uses web_search, text is split across multiple blocks
+  // and trying each block individually helps the parser find the JSON
+  for (const block of finalMessage.content) {
+    if (block.type === "text") {
+      textBlocks.push(block.text);
     }
-    console.log("[claude-streaming] Extracted text length:", accumulatedText.length);
+  }
+  console.log("[claude-streaming] text blocks:", textBlocks.length, "sizes:", textBlocks.map(b => b.length));
+
+  // If stream events didn't fire, rebuild accumulatedText from blocks
+  if (!accumulatedText) {
+    accumulatedText = textBlocks.join("");
+    console.log("[claude-streaming] Rebuilt accumulatedText from blocks:", accumulatedText.length);
   }
 
   return {
     text: accumulatedText,
+    textBlocks,
     tokensUsed: {
       input: finalMessage.usage.input_tokens,
       output: finalMessage.usage.output_tokens,

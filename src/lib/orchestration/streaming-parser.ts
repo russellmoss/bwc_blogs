@@ -17,11 +17,14 @@ export interface ParseResult {
  *
  * After extraction, normalizes the shape if Claude used a `metadata` wrapper.
  */
-export function parseGenerationResponse(rawText: string, articleId?: number, articleType?: string): ParseResult {
+export function parseGenerationResponse(rawText: string, articleId?: number, articleType?: string, textBlocks?: string[]): ParseResult {
   const trimmed = rawText.trim();
   let conversationReply = "";
 
   console.log("[streaming-parser] Raw text length:", trimmed.length);
+  if (textBlocks) {
+    console.log("[streaming-parser] Text blocks provided:", textBlocks.length, "sizes:", textBlocks.map(b => b.length));
+  }
 
   if (!trimmed) {
     console.error("[streaming-parser] EMPTY response from Claude");
@@ -33,8 +36,30 @@ export function parseGenerationResponse(rawText: string, articleId?: number, art
     };
   }
 
-  // Try to extract a JSON object using 3 strategies
-  const extracted = extractJson(trimmed);
+  // Try to extract a JSON object using multiple strategies
+  // First try the full concatenated text
+  let extracted = extractJson(trimmed);
+
+  // If that fails and we have multiple text blocks, try each block individually
+  // (when Claude uses web_search, the JSON is typically in the last text block)
+  if (!extracted && textBlocks && textBlocks.length > 1) {
+    console.log("[streaming-parser] Full-text extraction failed, trying individual text blocks...");
+    for (let i = textBlocks.length - 1; i >= 0; i--) {
+      const block = textBlocks[i].trim();
+      if (!block || block.indexOf("{") === -1) continue;
+      console.log("[streaming-parser] Trying text block", i, "length:", block.length);
+      extracted = extractJson(block);
+      if (extracted) {
+        // Gather conversation text from other blocks
+        const otherBlocks = textBlocks.filter((_, idx) => idx !== i).map(b => b.trim()).filter(Boolean);
+        if (otherBlocks.length > 0) {
+          extracted.conversationReply = otherBlocks.join("\n\n");
+        }
+        console.log("[streaming-parser] Found JSON in text block", i);
+        break;
+      }
+    }
+  }
 
   if (!extracted) {
     console.error("[streaming-parser] No valid JSON object found in response");

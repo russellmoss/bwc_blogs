@@ -55,7 +55,7 @@ export async function generateArticle(
   const briefLayer = layers.find((l) => l.name === "Article Brief");
   const articleTypeMatch = briefLayer?.content.match(/Article Type: (\w+)/);
   const articleType = articleTypeMatch?.[1];
-  const parseResult = parseGenerationResponse(streamResult.text, request.articleId, articleType);
+  const parseResult = parseGenerationResponse(streamResult.text, request.articleId, articleType, streamResult.textBlocks);
 
   if (!parseResult.document) {
     emit("error", {

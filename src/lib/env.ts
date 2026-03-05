@@ -1,5 +1,5 @@
 function optionalEnv(name: string, defaultValue: string = ''): string {
-  return process.env[name] || defaultValue;
+  return (process.env[name] || defaultValue).trim();
 }
 
 export const env = {

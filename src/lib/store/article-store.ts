@@ -21,6 +21,81 @@ import { runQAChecks, BrowserDomAdapter, getFixEntry, getFixTier } from "@/lib/q
 import type { DeterministicFixResult } from "@/types/qa-fix";
 import { extractMetadataFromHtmlBrowser, buildSyntheticDocument } from "@/lib/html-import";
 
+/** Parse <a> tags from HTML string and return href + anchor text pairs */
+function parseLinksFromHtml(html: string): { href: string; text: string }[] {
+  const links: { href: string; text: string }[] = [];
+  const re = /<a\s[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    links.push({ href: m[1], text: m[2].replace(/<[^>]*>/g, "") });
+  }
+  return links;
+}
+
+/** Extract section ID from a cad-path like "sections[0].content[1].text" */
+function sectionIdFromPath(
+  doc: CanonicalArticleDocument,
+  cadPath: string
+): string {
+  const match = cadPath.match(/^sections\[(\d+)\]/);
+  if (!match) return "unknown";
+  const idx = parseInt(match[1], 10);
+  return doc.sections[idx]?.id ?? `section-${idx}`;
+}
+
+/** Sync internalLinks/externalLinks arrays after inline HTML edit */
+function syncLinksFromHtml(
+  doc: CanonicalArticleDocument,
+  cadPath: string,
+  html: string
+): CanonicalArticleDocument {
+  const sectionId = sectionIdFromPath(doc, cadPath);
+  const newLinks = parseLinksFromHtml(html);
+
+  // Collect all hrefs currently in this cad-path's HTML
+  const newHrefs = new Set(newLinks.map((l) => l.href));
+
+  // Remove old links from this specific cad-path (matched by sectionId and approximate position)
+  // We can't perfectly track which cadPath each link came from, so we match by sectionId
+  // and remove links whose href is no longer present in any content of this section
+  const clone = structuredClone(doc);
+
+  // Add new links that don't already exist
+  for (const link of newLinks) {
+    const isBhutan = link.href.includes("bhutanwine.com");
+    if (isBhutan) {
+      const exists = clone.internalLinks.some(
+        (l) => l.targetUrl === link.href && l.sectionId === sectionId
+      );
+      if (!exists) {
+        clone.internalLinks.push({
+          targetUrl: link.href,
+          targetArticleId: null,
+          targetCorePage: null,
+          anchorText: link.text,
+          linkType: "inline",
+          sectionId,
+        });
+      }
+    } else {
+      const exists = clone.externalLinks.some(
+        (l) => l.url === link.href && l.sectionId === sectionId
+      );
+      if (!exists) {
+        clone.externalLinks.push({
+          url: link.href,
+          anchorText: link.text,
+          trustTier: "general" as const,
+          sourceName: "",
+          sectionId,
+        });
+      }
+    }
+  }
+
+  return clone;
+}
+
 const initialState: ArticleEditorState = {
   selectedArticleId: null,
   selectedArticle: null,
@@ -318,7 +393,21 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
     applyCanvasEdit: (cadPath: string, newText: string) => {
       const state = get();
       if (!state.currentDocument) return;
-      const updatedDoc = setByPath(state.currentDocument, cadPath, newText);
+
+      // Strip HTML tags from author fields to prevent <a> tag leaking into data
+      const authorPlainTextPaths = ["author.name", "author.credentials", "author.bio"];
+      let cleanedText = newText;
+      if (authorPlainTextPaths.includes(cadPath)) {
+        cleanedText = newText.replace(/<[^>]*>/g, "").trim();
+      }
+
+      let updatedDoc = setByPath(state.currentDocument, cadPath, cleanedText);
+
+      // Sync internalLinks/externalLinks when paragraph content changes
+      if (cadPath.endsWith(".text") && cadPath.includes("sections")) {
+        updatedDoc = syncLinksFromHtml(updatedDoc, cadPath, cleanedText);
+      }
+
       // Do NOT re-render HTML here — isCanvasEditing suppresses iframe updates
       set({ currentDocument: updatedDoc });
     },
