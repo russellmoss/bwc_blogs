@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth/session";
 import { promotePendingPhotos, commitFinalization } from "@/lib/finalization";
+import { logActivity } from "@/lib/activity/log";
 import type { CanonicalArticleDocument } from "@/types/article";
 import type { HtmlOverride, RendererOutput } from "@/types/renderer";
 import { z } from "zod";
@@ -64,6 +66,24 @@ export async function POST(
       parsed.data.notes,
       preRenderedOutput
     );
+
+    // Log finalization
+    const articleMeta = await prisma.contentMap.findUnique({
+      where: { id: articleId },
+      select: { title: true, articleType: true },
+    });
+    logActivity({
+      userId: parseInt(user.id, 10),
+      userEmail: user.email,
+      userName: user.name,
+      action: "ARTICLE_FINALIZED",
+      metadata: {
+        articleId,
+        articleTitle: articleMeta?.title ?? "",
+        articleType: articleMeta?.articleType ?? "",
+        version: result.documentVersion,
+      },
+    });
 
     return NextResponse.json({
       success: true,

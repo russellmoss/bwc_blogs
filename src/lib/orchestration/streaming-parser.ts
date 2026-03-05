@@ -125,10 +125,101 @@ function extractJson(text: string): { parsed: Record<string, unknown>; conversat
       if (opens > closes) {
         console.error("[streaming-parser] JSON appears truncated: { count:", opens, "} count:", closes);
       }
+
+      // Strategy 4: Attempt JSON repair on the candidate
+      const repaired = repairJson(candidate);
+      if (repaired !== candidate) {
+        try {
+          const parsed = JSON.parse(repaired);
+          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+            const reply = (text.slice(0, firstBrace) + text.slice(lastBrace + 1)).trim();
+            console.log("[streaming-parser] Strategy 4: repaired JSON, keys:", Object.keys(parsed).slice(0, 10));
+            return { parsed, conversationReply: reply };
+          }
+        } catch (e2) {
+          const msg2 = e2 instanceof Error ? e2.message : String(e2);
+          console.log("[streaming-parser] Strategy 4 repair also failed:", msg2.slice(0, 200));
+        }
+      }
     }
   }
 
   return null;
+}
+
+/**
+ * Attempts to repair common JSON issues in Claude's output:
+ * - Unescaped control characters (newlines, tabs) inside string values
+ * - Trailing commas before } or ]
+ * - Single-quoted strings (rare but happens)
+ *
+ * Uses a character-by-character state machine to properly handle string boundaries.
+ */
+function repairJson(input: string): string {
+  let result = "";
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      result += ch;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escapeNext = true;
+      result += ch;
+      continue;
+    }
+
+    if (ch === '"') {
+      if (!inString) {
+        inString = true;
+        result += ch;
+        continue;
+      }
+
+      // We're inside a string and hit a quote — is this the end of the string?
+      // Look ahead: if the next non-whitespace character is : , } ] or end-of-input,
+      // this is likely the closing quote
+      const rest = input.slice(i + 1);
+      const nextSignificant = rest.match(/^\s*([,:\}\]\"])/);
+      if (nextSignificant || rest.trim() === "") {
+        inString = false;
+        result += ch;
+        continue;
+      }
+
+      // Otherwise this is an unescaped quote inside a string value — escape it
+      result += '\\"';
+      continue;
+    }
+
+    if (inString) {
+      // Escape control characters that are invalid in JSON strings
+      if (ch === "\n") { result += "\\n"; continue; }
+      if (ch === "\r") { result += "\\r"; continue; }
+      if (ch === "\t") { result += "\\t"; continue; }
+      // Other control characters (U+0000 to U+001F)
+      const code = ch.charCodeAt(0);
+      if (code < 0x20) {
+        result += "\\u" + code.toString(16).padStart(4, "0");
+        continue;
+      }
+      result += ch;
+      continue;
+    }
+
+    result += ch;
+  }
+
+  // Fix trailing commas: ,} or ,]
+  result = result.replace(/,(\s*[}\]])/g, "$1");
+
+  return result;
 }
 
 /**

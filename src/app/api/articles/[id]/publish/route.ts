@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth/session";
 import { generateBackfillReport, activateLinks } from "@/lib/finalization";
+import { logActivity } from "@/lib/activity/log";
 import { z } from "zod";
 
 const PublishSchema = z.object({
@@ -13,7 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole("admin", "editor");
+    const user = await requireRole("admin", "editor");
     const { id } = await params;
     const articleId = parseInt(id, 10);
 
@@ -29,7 +30,7 @@ export async function POST(
     // Verify article exists and is finalized
     const article = await prisma.contentMap.findUnique({
       where: { id: articleId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, title: true },
     });
 
     if (!article) {
@@ -53,6 +54,19 @@ export async function POST(
       data: {
         status: "published",
         publishedDate,
+        publishedUrl: parsed.data.publishedUrl,
+      },
+    });
+
+    // Log publish
+    logActivity({
+      userId: parseInt(user.id, 10),
+      userEmail: user.email,
+      userName: user.name,
+      action: "ARTICLE_PUBLISHED",
+      metadata: {
+        articleId,
+        articleTitle: article.title ?? "",
         publishedUrl: parsed.data.publishedUrl,
       },
     });

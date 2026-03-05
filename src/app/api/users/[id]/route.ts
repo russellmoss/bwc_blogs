@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
+import { logActivity } from "@/lib/activity/log";
 import { z } from "zod";
 
 const UpdateUserSchema = z.object({
@@ -62,7 +63,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    const sessionUser = await requireAuth();
     const { id } = await params;
 
     const body = await request.json();
@@ -95,6 +96,34 @@ export async function PATCH(
       },
     });
 
+    // Log user management actions
+    if (parsed.data.isActive === false) {
+      logActivity({
+        userId: parseInt(sessionUser.id, 10),
+        userEmail: sessionUser.email,
+        userName: sessionUser.name,
+        action: "USER_DEACTIVATED",
+        metadata: { targetEmail: user.email },
+      });
+    } else if (parsed.data.isActive === true) {
+      logActivity({
+        userId: parseInt(sessionUser.id, 10),
+        userEmail: sessionUser.email,
+        userName: sessionUser.name,
+        action: "USER_REACTIVATED",
+        metadata: { targetEmail: user.email },
+      });
+    }
+    if (parsed.data.password) {
+      logActivity({
+        userId: parseInt(sessionUser.id, 10),
+        userEmail: sessionUser.email,
+        userName: sessionUser.name,
+        action: "USER_PASSWORD_RESET",
+        metadata: { targetEmail: user.email },
+      });
+    }
+
     return NextResponse.json({ success: true, data: user });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
@@ -117,13 +146,21 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    const sessionUser = await requireAuth();
     const { id } = await params;
 
     const user = await prisma.user.update({
       where: { id: parseInt(id, 10) },
       data: { isActive: false },
       select: { id: true, email: true, isActive: true },
+    });
+
+    logActivity({
+      userId: parseInt(sessionUser.id, 10),
+      userEmail: sessionUser.email,
+      userName: sessionUser.name,
+      action: "USER_DEACTIVATED",
+      metadata: { targetEmail: user.email },
     });
 
     return NextResponse.json({ success: true, data: user });

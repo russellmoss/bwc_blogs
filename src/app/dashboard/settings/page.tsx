@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2, UserPlus, Eye, EyeOff, KeyRound } from "lucide-react";
+import { ArrowLeft, Trash2, UserPlus, Eye, EyeOff, KeyRound, Activity, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 function PasswordInput({ value, onChange, placeholder, required, minLength, style }: {
   value: string;
@@ -638,6 +638,353 @@ function UserManagementSection() {
   );
 }
 
+// ── Activity Log Section ─────────────────────────────────────────────
+
+interface ActivityLogEntry {
+  id: number;
+  userId: number;
+  userEmail: string;
+  userName: string;
+  action: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+const ACTION_OPTIONS = [
+  { value: "", label: "All Actions" },
+  { value: "LOGIN", label: "Login" },
+  { value: "ARTICLE_FINALIZED", label: "Article Finalized" },
+  { value: "ARTICLE_PUBLISHED", label: "Article Published" },
+  { value: "USER_CREATED", label: "User Created" },
+  { value: "USER_DEACTIVATED", label: "User Deactivated" },
+  { value: "USER_REACTIVATED", label: "User Reactivated" },
+  { value: "USER_PASSWORD_RESET", label: "Password Reset (Admin)" },
+  { value: "PASSWORD_CHANGED", label: "Password Changed" },
+];
+
+const ACTION_BADGES: Record<string, { bg: string; color: string; label: string }> = {
+  LOGIN:               { bg: "#f0fdf4", color: "#15803d", label: "Login" },
+  ARTICLE_FINALIZED:   { bg: "#eff6ff", color: "#1d4ed8", label: "Finalized" },
+  ARTICLE_PUBLISHED:   { bg: "#f5f3ff", color: "#6d28d9", label: "Published" },
+  USER_CREATED:        { bg: "#f0fdf4", color: "#166534", label: "User Created" },
+  USER_DEACTIVATED:    { bg: "#fef2f2", color: "#b91c1c", label: "Deactivated" },
+  USER_REACTIVATED:    { bg: "#ecfdf5", color: "#065f46", label: "Reactivated" },
+  USER_PASSWORD_RESET: { bg: "#fff7ed", color: "#9a3412", label: "Password Reset" },
+  PASSWORD_CHANGED:    { bg: "#fafaf9", color: "#44403c", label: "Password Changed" },
+};
+
+function formatDetails(action: string, metadata: Record<string, unknown> | null): string {
+  if (!metadata) return "";
+  switch (action) {
+    case "ARTICLE_FINALIZED":
+      return `Finalized "${metadata.articleTitle}"${metadata.version ? ` (v${metadata.version}, ${metadata.articleType})` : ""}`;
+    case "ARTICLE_PUBLISHED":
+      return `Published "${metadata.articleTitle}"${metadata.publishedUrl ? ` → ${metadata.publishedUrl}` : ""}`;
+    case "USER_CREATED":
+      return `Created ${metadata.role} account for ${metadata.targetEmail}`;
+    case "USER_DEACTIVATED":
+      return `Deactivated ${metadata.targetEmail}`;
+    case "USER_REACTIVATED":
+      return `Reactivated ${metadata.targetEmail}`;
+    case "USER_PASSWORD_RESET":
+      return `Reset password for ${metadata.targetEmail}`;
+    case "LOGIN":
+      return "Logged in";
+    case "PASSWORD_CHANGED":
+      return "Changed own password";
+    default:
+      return JSON.stringify(metadata);
+  }
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    + ", "
+    + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+function ActivityLogSection() {
+  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Filters
+  const [filterUserId, setFilterUserId] = useState<number | "">("");
+  const [filterAction, setFilterAction] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+
+  // Users for filter dropdown
+  const [users, setUsers] = useState<{ id: number; name: string; email: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setUsers(data.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchLog = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      if (filterUserId) params.set("userId", String(filterUserId));
+      if (filterAction) params.set("action", filterAction);
+      if (filterDateFrom) params.set("dateFrom", filterDateFrom);
+      if (filterDateTo) params.set("dateTo", filterDateTo);
+      params.set("page", String(page));
+      params.set("pageSize", "25");
+
+      const res = await fetch(`/api/activity-log?${params.toString()}`);
+      const data = await res.json();
+      if (data.success) {
+        setEntries(data.data.entries);
+        setTotal(data.data.total);
+        setTotalPages(data.data.totalPages);
+      } else {
+        setError(data.error?.message || "Failed to load activity log");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, filterUserId, filterAction, filterDateFrom, filterDateTo]);
+
+  useEffect(() => {
+    fetchLog();
+  }, [fetchLog]);
+
+  // Reset to page 1 when filters change
+  const updateFilter = (setter: (v: any) => void, value: any) => {
+    setPage(1);
+    setter(value);
+  };
+
+  const hasFilters = filterUserId !== "" || filterAction !== "" || filterDateFrom !== "" || filterDateTo !== "";
+
+  const selectStyle: React.CSSProperties = {
+    padding: "6px 10px",
+    border: "1px solid #ccc",
+    borderRadius: "4px",
+    fontSize: "13px",
+    background: "#fff",
+    color: "#242323",
+    minWidth: "140px",
+  };
+
+  const inputStyle: React.CSSProperties = {
+    padding: "6px 10px",
+    border: "1px solid #ccc",
+    borderRadius: "4px",
+    fontSize: "13px",
+    width: "140px",
+    color: "#242323",
+  };
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e8e6e6", borderRadius: "8px", padding: "24px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+        <Activity style={{ width: "18px", height: "18px", color: "#bc9b5d" }} />
+        <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#000", margin: 0 }}>
+          Activity Log
+        </h2>
+      </div>
+
+      {/* Filter bar */}
+      <div style={{
+        display: "flex",
+        gap: "8px",
+        alignItems: "center",
+        flexWrap: "wrap",
+        padding: "12px",
+        background: "#f7f7f7",
+        borderRadius: "6px",
+        marginBottom: "16px",
+      }}>
+        <select
+          value={filterUserId}
+          onChange={(e) => updateFilter(setFilterUserId, e.target.value ? parseInt(e.target.value, 10) : "")}
+          style={selectStyle}
+        >
+          <option value="">All Users</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.name}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterAction}
+          onChange={(e) => updateFilter(setFilterAction, e.target.value)}
+          style={selectStyle}
+        >
+          {ACTION_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
+        <input
+          type="date"
+          value={filterDateFrom}
+          onChange={(e) => updateFilter(setFilterDateFrom, e.target.value)}
+          style={inputStyle}
+          title="From date"
+        />
+        <input
+          type="date"
+          value={filterDateTo}
+          onChange={(e) => updateFilter(setFilterDateTo, e.target.value)}
+          style={inputStyle}
+          title="To date"
+        />
+
+        {hasFilters && (
+          <button
+            onClick={() => {
+              setPage(1);
+              setFilterUserId("");
+              setFilterAction("");
+              setFilterDateFrom("");
+              setFilterDateTo("");
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "6px 10px",
+              background: "transparent",
+              border: "1px solid #ccc",
+              borderRadius: "4px",
+              fontSize: "12px",
+              cursor: "pointer",
+              color: "#414141",
+            }}
+          >
+            <X style={{ width: "12px", height: "12px" }} />
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <p style={{ fontSize: "13px", color: "#888" }}>Loading activity...</p>
+      ) : error ? (
+        <p style={{ fontSize: "13px", color: "#b91c1c" }}>{error}</p>
+      ) : entries.length === 0 ? (
+        <p style={{ fontSize: "13px", color: "#888" }}>No activity found.</p>
+      ) : (
+        <>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #e8e6e6" }}>
+                <th style={{ textAlign: "left", padding: "8px 4px", color: "#888", fontWeight: 500, fontSize: "11px", textTransform: "uppercase", width: "160px" }}>Date/Time</th>
+                <th style={{ textAlign: "left", padding: "8px 4px", color: "#888", fontWeight: 500, fontSize: "11px", textTransform: "uppercase", width: "140px" }}>User</th>
+                <th style={{ textAlign: "left", padding: "8px 4px", color: "#888", fontWeight: 500, fontSize: "11px", textTransform: "uppercase", width: "130px" }}>Action</th>
+                <th style={{ textAlign: "left", padding: "8px 4px", color: "#888", fontWeight: 500, fontSize: "11px", textTransform: "uppercase" }}>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => {
+                const badge = ACTION_BADGES[entry.action] || { bg: "#f7f7f7", color: "#414141", label: entry.action };
+                return (
+                  <tr key={entry.id} style={{ borderBottom: "1px solid #f3f3f3" }}>
+                    <td style={{ padding: "8px 4px", color: "#414141", fontSize: "12px", whiteSpace: "nowrap" }}>
+                      {formatDate(entry.createdAt)}
+                    </td>
+                    <td style={{ padding: "8px 4px" }}>
+                      <div style={{ color: "#000", fontSize: "13px" }}>{entry.userName}</div>
+                      <div style={{ color: "#888", fontSize: "11px" }}>{entry.userEmail}</div>
+                    </td>
+                    <td style={{ padding: "8px 4px" }}>
+                      <span style={{
+                        display: "inline-block",
+                        padding: "2px 8px",
+                        borderRadius: "999px",
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        background: badge.bg,
+                        color: badge.color,
+                        whiteSpace: "nowrap",
+                      }}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td style={{ padding: "8px 4px", color: "#414141", fontSize: "12px" }}>
+                      {formatDetails(entry.action, entry.metadata)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Pagination */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginTop: "12px",
+            fontSize: "12px",
+            color: "#888",
+          }}>
+            <span>
+              Showing {(page - 1) * 25 + 1}–{Math.min(page * 25, total)} of {total}
+            </span>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page <= 1}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "4px 10px",
+                  background: page <= 1 ? "#f7f7f7" : "#fff",
+                  border: "1px solid #e8e6e6",
+                  borderRadius: "4px",
+                  cursor: page <= 1 ? "not-allowed" : "pointer",
+                  fontSize: "12px",
+                  color: page <= 1 ? "#ccc" : "#414141",
+                }}
+              >
+                <ChevronLeft style={{ width: "12px", height: "12px" }} />
+                Prev
+              </button>
+              <button
+                onClick={() => setPage(Math.min(totalPages, page + 1))}
+                disabled={page >= totalPages}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  padding: "4px 10px",
+                  background: page >= totalPages ? "#f7f7f7" : "#fff",
+                  border: "1px solid #e8e6e6",
+                  borderRadius: "4px",
+                  cursor: page >= totalPages ? "not-allowed" : "pointer",
+                  fontSize: "12px",
+                  color: page >= totalPages ? "#ccc" : "#414141",
+                }}
+              >
+                Next
+                <ChevronRight style={{ width: "12px", height: "12px" }} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Settings Page ────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -673,6 +1020,7 @@ export default function SettingsPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <ChangePasswordSection />
           <UserManagementSection />
+          <ActivityLogSection />
         </div>
       </div>
     </div>

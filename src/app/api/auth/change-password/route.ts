@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/auth/session";
 import { hashPassword, verifyPassword, validatePassword } from "@/lib/auth/password";
+import { logActivity } from "@/lib/activity/log";
 import { z } from "zod";
 
 const ChangePasswordSchema = z.object({
@@ -59,6 +60,13 @@ export async function POST(request: NextRequest) {
     await prisma.user.update({
       where: { id: user.id },
       data: { passwordHash: newHash },
+    });
+
+    logActivity({
+      userId: parseInt(sessionUser.id, 10),
+      userEmail: sessionUser.email,
+      userName: sessionUser.name,
+      action: "PASSWORD_CHANGED",
     });
 
     return NextResponse.json({ success: true, data: { message: "Password updated successfully" } });

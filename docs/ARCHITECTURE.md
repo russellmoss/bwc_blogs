@@ -37,6 +37,7 @@ See `docs/_generated/prisma-models.md` for auto-generated field-level inventory.
 | Model | Purpose |
 |-------|---------|
 | **User** | Auth accounts — email, passwordHash, role (admin/editor/viewer), isActive |
+| **ActivityLog** | User activity tracking — userId, userEmail, userName, action, metadata (JSON), createdAt |
 | **ContentMap** | Article metadata — hub/spoke/news type, title, slug, keywords, status, parentHubId |
 | **ArticleDocument** | Versioned JSON — canonicalDoc (CanonicalArticleDocument), htmlOverrides, version |
 | **ArticleHtml** | Rendered output — htmlContent, metaTitle, metaDescription, schemaJson, qaScore |
@@ -124,6 +125,12 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 |-------|---------|---------|
 | `/api/users` | GET, POST | List active users / create user (admin only) |
 | `/api/users/[id]` | GET, PATCH, DELETE | Get / update / deactivate individual user |
+
+### Activity Log (1 route)
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/activity-log` | GET | Paginated activity log — filter by user, action, date range |
 
 ## Page Routes
 

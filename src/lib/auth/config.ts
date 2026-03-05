@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db";
 import { retryDatabaseOperation } from "@/lib/db/retry";
 import { verifyPassword } from "./password";
+import { logActivity } from "@/lib/activity/log";
 
 // Auto-detect the correct URL on Vercel deployments
 function getNextAuthUrl(): string | undefined {
@@ -61,6 +62,17 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
+    async signIn({ user }) {
+      if (user?.id && user?.email) {
+        logActivity({
+          userId: parseInt(user.id, 10),
+          userEmail: user.email,
+          userName: user.name ?? "",
+          action: "LOGIN",
+        });
+      }
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
