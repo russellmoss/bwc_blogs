@@ -69,7 +69,7 @@ export async function generateArticle(
 
   // Step 5: Post-processing (repair + validate + render)
   emit("status", { message: "Running validation and rendering..." });
-  const postResult = runPostProcessing(parseResult.document);
+  const postResult = await runPostProcessing(parseResult.document);
 
   emit("validation", postResult.validationResult);
 

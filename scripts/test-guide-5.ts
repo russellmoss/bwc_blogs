@@ -189,7 +189,7 @@ async function test() {
     const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf-8"));
     const { runPostProcessing } = await import("../src/lib/orchestration");
 
-    const postResult = runPostProcessing(fixture);
+    const postResult = await runPostProcessing(fixture);
     check("Post-processing produces HTML", postResult.html.length > 0);
     check(
       "Post-processing returns validation result",

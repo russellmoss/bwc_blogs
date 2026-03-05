@@ -37,9 +37,12 @@ After searching, embed the found URLs directly in the externalLinks array.
 ENTITY HYPERLINKING RULE:
 - When you mention any business, organization, winery, vineyard, publication, university,
   government agency, or named institution, hyperlink its name to its official website URL.
-- Use the web_search tool to verify the correct URL if you are not confident.
-- Do NOT fabricate or guess URLs — if you cannot verify a URL, leave the name unlinked.
-- Wrap the entity name in an <a> tag in the paragraph text:
+- You MUST use the web_search tool to find and verify the URL for EVERY entity you hyperlink.
+  Do NOT rely on memory — always search. URLs you have not verified via web_search will be
+  automatically checked and removed if they are dead.
+- Do NOT fabricate, guess, or assume URLs — if web_search does not return a clear official
+  URL for an entity, leave the name as plain text (no link).
+- Wrap verified entity names in an <a> tag in the paragraph text:
   <a href="https://example.com" target="_blank" rel="noopener">Entity Name</a>
 - Add a corresponding entry to the externalLinks array with trustTier and sourceName.
 - Do NOT hyperlink BWC or Bhutan Wine Company — use internal links from the Link Graph instead.
