@@ -84,6 +84,8 @@ model ContentMap {
   targetLinks      InternalLink[]     @relation("TargetArticle")
   articlePhotos    ArticlePhoto[]
   leads            Lead[]
+  performanceData      ArticlePerformance[]
+  recommendations      ContentRecommendation[]
 
   @@map("content_map")
 }
@@ -247,4 +249,42 @@ model WritingStyle {
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("writing_styles")
+}
+
+// ============================================================
+// SEO INTELLIGENCE (Guide 13)
+// ============================================================
+
+model ArticlePerformance {
+  id            Int       @id @default(autoincrement())
+  contentMapId  Int?      @map("content_map_id")
+  date          DateTime  @map("date") @db.Date
+  page          String    @map("page")
+  clicks        Int       @default(0)
+  impressions   Int       @default(0)
+  ctr           Float     @default(0) @map("ctr")
+  position      Float     @default(0) @map("position")
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+
+  contentMap    ContentMap? @relation(fields: [contentMapId], references: [id])
+
+  @@unique([page, date])
+  @@map("article_performance")
+}
+
+model ContentRecommendation {
+  id                   Int       @id @default(autoincrement())
+  contentMapId         Int?      @map("content_map_id")
+  recommendationType   String    @map("recommendation_type")
+  title                String
+  rationale            String
+  suggestedPrompt      String    @map("suggested_prompt")
+  priority             String    @default("medium")
+  status               String    @default("pending")
+  generatedAt          DateTime  @default(now()) @map("generated_at")
+  resolvedAt           DateTime? @map("resolved_at")
+
+  contentMap           ContentMap? @relation(fields: [contentMapId], references: [id])
+
+  @@map("content_recommendation")
 }

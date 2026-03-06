@@ -28,6 +28,9 @@ export type ErrorCode =
   | "CLOUDINARY_ERROR"
   | "LINK_VERIFICATION_FAILED"
   | "FINALIZATION_FAILED"
+  | "GSC_UNAVAILABLE"
+  | "GSC_SYNC_FAILED"
+  | "INTELLIGENCE_ERROR"
   | "INTERNAL_ERROR";
 
 // Validation result returned by article schema validation

@@ -10,3 +10,4 @@ export * from "./api";
 export * from "./ui";
 export * from "./qa-fix";
 export * from "./activity";
+export * from "./intelligence";

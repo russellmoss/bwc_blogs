@@ -12,7 +12,8 @@
 | **AI** | Claude API (Anthropic SDK — article generation, QA fixes, alt-text) |
 | **RAG** | Onyx CE (knowledge base retrieval) |
 | **CDN** | Cloudinary (image hosting and transforms) |
-| **State** | Zustand (article-store, dashboard-store) |
+| **Charts** | Recharts (responsive line charts, dual-axis) |
+| **State** | Zustand (article-store, dashboard-store, intelligence-store) |
 | **Validation** | Zod (runtime schemas on API boundaries) |
 | **Hosting** | Vercel |
 
@@ -46,6 +47,9 @@ See `docs/_generated/prisma-models.md` for auto-generated field-level inventory.
 | **ArticlePhoto** | Article-photo junction — articleId, photoId, position (hero, inline-1, etc.) |
 | **Lead** | Form captures — email, sourceArticleId, captureType, UTM params |
 | **LeadEvent** | Lead interactions — leadId, eventType, eventData (JSON) |
+| **WritingStyle** | Writing style templates — name, slug, content, isDefault |
+| **ArticlePerformance** | GSC metrics per page per day — clicks, impressions, ctr, position; nullable contentMapId for unmatched pages; unique on (page, date) |
+| **ContentRecommendation** | Claude-generated content recommendations — type, priority, status, suggestedPrompt |
 
 ## API Routes
 
@@ -132,6 +136,22 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 |-------|---------|---------|
 | `/api/activity-log` | GET | Paginated activity log — filter by user, action, date range |
 
+### Intelligence (5 routes)
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/intelligence/performance` | GET | GSC performance data aggregated per page, joined with content map; supports `?days=N` or `?start=&end=` |
+| `/api/intelligence/timeseries` | GET | Per-day clicks + impressions aggregated across all pages for chart rendering |
+| `/api/intelligence/analyze` | POST | Claude analyzes performance data → content recommendations |
+| `/api/intelligence/recommendations` | GET, PATCH | List pending recommendations / approve or dismiss |
+| `/api/intelligence/sync` | POST | Manual GSC sync trigger (session-authed, same logic as cron route) |
+
+### Cron (1 route)
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/cron/gsc-sync` | GET | Daily GSC data sync — CRON_SECRET bearer auth, Vercel Cron |
+
 ## Page Routes
 
 | Route | File | Description |
@@ -141,6 +161,7 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 | `/dashboard` | `src/app/dashboard/page.tsx` | Main editor — ChatPanel (left) + PreviewPanel (right) in AppShell |
 | `/dashboard/content-map` | `src/app/dashboard/content-map/page.tsx` | Content strategy — table/hub view, create/import/delete articles |
 | `/dashboard/photos` | `src/app/dashboard/photos/page.tsx` | Photo manager — upload, Drive import, alt-text generation |
+| `/dashboard/intelligence` | `src/app/dashboard/intelligence/page.tsx` | SEO Intelligence — performance, gap analysis, recommendations |
 | `/dashboard/settings` | `src/app/dashboard/settings/page.tsx` | Admin panel — password management, user CRUD |
 
 ## Components
@@ -148,7 +169,7 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 ### `src/components/layout/`
 | Component | Purpose |
 |-----------|---------|
-| `AppShell` | Top-level layout — header nav (Composer, Content Map, Photos), UserMenu, ArticleSelector |
+| `AppShell` | Top-level layout — header nav (Composer, Content Map, Photos, Intelligence), UserMenu, ArticleSelector |
 | `ArticleSelector` | Dropdown to switch between articles |
 | `SplitPane` | Resizable two-column layout for editor |
 
@@ -205,6 +226,15 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 | `CreateArticleModal` | New article dialog (type, title, hub, keywords, etc.) |
 | `CSVImportModal` | Bulk CSV import with template download, preview, paste |
 | `StatusBadge` / `TypeBadge` | Status/type indicator badges |
+
+### `src/components/intelligence/`
+| Component | Purpose |
+|-----------|---------|
+| `IntelligenceDashboard` | 3-tab container (Performance, Gap Analysis, Recommendations) with back-to-Composer link |
+| `PerformanceOverview` | Date range selector, metric cards, recharts line chart, granularity toggle, page type filter, sortable table, CSV export |
+| `PerformanceChart` | Recharts dual-axis LineChart — impressions (indigo) + clicks (gold), daily/weekly/monthly bucketing, tooltips |
+| `GapAnalysis` | Unindexed articles + keyword gap analysis |
+| `RecommendationQueue` | Claude recommendation cards with approve/dismiss, Run Analysis + Sync Now buttons |
 
 ### `src/components/photo-manager/`
 | Component | Purpose |
@@ -292,9 +322,20 @@ Article finalization and publication pipeline.
 - `session.ts` — `getCurrentUser()`, `requireAuth()`, `requireRole()` helpers
 - `password.ts` — bcrypt hash/verify
 
+### `src/lib/gsc/`
+Google Search Console integration — data fetching, matching, and sync.
+
+- `auth.ts` — service account auth from `GSC_SERVICE_ACCOUNT_JSON` env var
+- `client.ts` — creates searchconsole v1 API client
+- `fetcher.ts` — queries GSC with `["date", "page"]` dimensions, 25K row pagination
+- `matcher.ts` — matches GSC URLs to ContentMap entries by publishedUrl or slug suffix
+- `sync.ts` — shared sync logic: fetches 16-month history, upserts per-day per-page rows
+- `index.ts` — barrel export
+
 ### `src/lib/store/`
 - `article-store.ts` — Zustand: editor state (document, HTML, QA, undo/redo, versions, conversation, photos)
 - `dashboard-store.ts` — Zustand: content map (articles, filters, sort, selection, detail panel)
+- `intelligence-store.ts` — Zustand: SEO intelligence (performance data, timeseries, recommendations, date range, chart granularity, page type filter, sync state)
 
 ### `src/lib/undo-redo/`
 - `undo-manager.ts` — LIFO stack operations (push, pop, depth limit)
@@ -322,6 +363,8 @@ All shared types live in `src/types/` and are re-exported from `src/types/index.
 | `qa.ts` | `QACheck`, `QAResult`, `QAScore`, `CheckSeverity` |
 | `qa-fix.ts` | `DocMutation`, `DeterministicFixResult`, `DeterministicFixFn`, `FixRegistryEntry`, `FixTier` |
 | `renderer.ts` | `HtmlOverride`, `RendererInput`, `RendererOutput` |
+| `activity.ts` | `ActivityAction` (includes `"GSC_SYNC_COMPLETED"`) |
+| `intelligence.ts` | `ArticlePerformanceRow`, `PerformanceWithContentMap`, `RecommendationType`, `ContentRecommendation`, `GscSyncResult`, `PerformanceSummary` |
 | `ui.ts` | `PreviewMode`, `EditingMode`, `ViewportMode`, `ArticleEditorState`, `ArticleEditorActions`, `ArticleVersion`, `UndoEntry` |
 
 ## Environment Variables

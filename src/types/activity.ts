@@ -6,7 +6,8 @@ export type ActivityAction =
   | "USER_CREATED"
   | "USER_DEACTIVATED"
   | "USER_REACTIVATED"
-  | "USER_PASSWORD_RESET";
+  | "USER_PASSWORD_RESET"
+  | "GSC_SYNC_COMPLETED";
 
 export interface ActivityLogEntry {
   id: number;

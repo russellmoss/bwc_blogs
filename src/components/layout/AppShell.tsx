@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
-import { User, Settings, LogOut, ChevronDown, Image, ExternalLink, PenTool, LayoutGrid, BookOpen } from "lucide-react";
+import { User, Settings, LogOut, ChevronDown, Image, ExternalLink, PenTool, LayoutGrid, BookOpen, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { ArticleSelector } from "./ArticleSelector";
 
@@ -140,6 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isContentMap = pathname === "/dashboard/content-map";
   const isPhotos = pathname === "/dashboard/photos";
   const isGetStarted = pathname === "/dashboard/get-started";
+  const isIntelligence = pathname === "/dashboard/intelligence";
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
@@ -214,6 +215,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Image style={{ width: "14px", height: "14px" }} />
           Photos
+        </Link>
+        <Link
+          href="/dashboard/intelligence"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            padding: "4px 8px",
+            fontSize: "13px",
+            color: isIntelligence ? "#bc9b5d" : "#414141",
+            fontWeight: isIntelligence ? 600 : 400,
+            textDecoration: "none",
+            borderRadius: "4px",
+          }}
+        >
+          <TrendingUp style={{ width: "14px", height: "14px" }} />
+          Intelligence
         </Link>
         <Link
           href="/dashboard/get-started"
