@@ -4,7 +4,9 @@ import type { PerformanceWithContentMap, ContentRecommendation } from "@/types/i
 /** "Last N months of data" means from (latestDate - N months) to latestDate */
 export type DateRange = "3m" | "6m" | "12m" | "all" | "custom";
 export type ChartGranularity = "daily" | "weekly" | "monthly";
-export type PageTypeFilter = "all" | "blog" | "product" | "static";
+export type PageType = "blog" | "product" | "static";
+/** @deprecated Use PageType instead */
+export type PageTypeFilter = "all" | PageType;
 
 export interface TimeseriesPoint {
   date: string;
@@ -30,7 +32,8 @@ interface IntelligenceStoreState {
   customStartDate: string;
   customEndDate: string;
   chartGranularity: ChartGranularity;
-  pageTypeFilter: PageTypeFilter;
+  /** Active page type filters — when all 3 are selected, no filtering is applied */
+  pageTypes: Set<PageType>;
 }
 
 interface IntelligenceStoreActions {
@@ -44,7 +47,7 @@ interface IntelligenceStoreActions {
   setDateRange: (range: DateRange) => void;
   setCustomDateRange: (start: string, end: string) => void;
   setChartGranularity: (g: ChartGranularity) => void;
-  setPageTypeFilter: (filter: PageTypeFilter) => void;
+  togglePageType: (type: PageType) => void;
 }
 
 function subtractMonths(dateStr: string, months: number): string {
@@ -74,12 +77,12 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
     customStartDate: subtractMonths(defaultDate(), 3),
     customEndDate: defaultDate(),
     chartGranularity: "daily",
-    pageTypeFilter: "all",
+    pageTypes: new Set<PageType>(["blog", "product", "static"]),
 
     fetchPerformance: async () => {
       set({ isLoadingPerformance: true });
       try {
-        const { dateRange, customStartDate, customEndDate, latestDataDate, earliestDataDate } = get();
+        const { dateRange, customStartDate, customEndDate, latestDataDate, earliestDataDate, pageTypes } = get();
 
         let start: string;
         let end: string;
@@ -97,7 +100,11 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
           start = subtractMonths(anchor, months);
         }
 
-        const url = `/api/intelligence/performance?start=${start}&end=${end}`;
+        const allTypes: PageType[] = ["blog", "product", "static"];
+        const typesParam = pageTypes.size < allTypes.length
+          ? `&types=${Array.from(pageTypes).join(",")}`
+          : "";
+        const url = `/api/intelligence/performance?start=${start}&end=${end}${typesParam}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.success) {
@@ -113,7 +120,7 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
     fetchTimeseries: async () => {
       set({ isLoadingTimeseries: true });
       try {
-        const { dateRange, customStartDate, customEndDate, latestDataDate, earliestDataDate } = get();
+        const { dateRange, customStartDate, customEndDate, latestDataDate, earliestDataDate, pageTypes } = get();
 
         let start: string;
         let end: string;
@@ -131,7 +138,11 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
           start = subtractMonths(anchor, months);
         }
 
-        const url = `/api/intelligence/timeseries?start=${start}&end=${end}`;
+        const allTypes: PageType[] = ["blog", "product", "static"];
+        const typesParam = pageTypes.size < allTypes.length
+          ? `&types=${Array.from(pageTypes).join(",")}`
+          : "";
+        const url = `/api/intelligence/timeseries?start=${start}&end=${end}${typesParam}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.success) {
@@ -247,12 +258,22 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
     setDateRange: (range) => set({ dateRange: range }),
     setCustomDateRange: (start, end) => set({ customStartDate: start, customEndDate: end, dateRange: "custom" }),
     setChartGranularity: (g) => set({ chartGranularity: g }),
-    setPageTypeFilter: (filter) => set({ pageTypeFilter: filter }),
+    togglePageType: (type) => {
+      const current = get().pageTypes;
+      const next = new Set(current);
+      if (next.has(type)) {
+        // Don't allow deselecting the last one
+        if (next.size > 1) next.delete(type);
+      } else {
+        next.add(type);
+      }
+      set({ pageTypes: next });
+    },
   })
 );
 
 /** Classify a GSC page URL into a page type for filtering */
-export function classifyPageType(page: string): PageTypeFilter {
+export function classifyPageType(page: string): PageType {
   const path = page.replace(/https?:\/\/[^/]+/, "");
   if (path.startsWith("/blog/") || path.startsWith("/post/")) return "blog";
   if (path.startsWith("/product-page/") || path.startsWith("/category/")) return "product";

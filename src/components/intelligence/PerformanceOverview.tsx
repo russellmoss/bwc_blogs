@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useIntelligenceStore, classifyPageType } from "@/lib/store/intelligence-store";
-import type { DateRange, ChartGranularity, PageTypeFilter } from "@/lib/store/intelligence-store";
+import type { DateRange, ChartGranularity, PageType } from "@/lib/store/intelligence-store";
 import type { PerformanceWithContentMap } from "@/types/intelligence";
 import { PerformanceChart } from "./PerformanceChart";
 
@@ -22,11 +22,10 @@ const granularityOptions: { key: ChartGranularity; label: string }[] = [
   { key: "monthly", label: "Monthly" },
 ];
 
-const pageTypeOptions: { key: PageTypeFilter; label: string }[] = [
-  { key: "all", label: "All Pages" },
+const pageTypeOptions: { key: PageType; label: string }[] = [
   { key: "blog", label: "Blog" },
   { key: "product", label: "Products" },
-  { key: "static", label: "Static Pages" },
+  { key: "static", label: "Static" },
 ];
 
 export function PerformanceOverview() {
@@ -37,7 +36,7 @@ export function PerformanceOverview() {
     dateRange, setDateRange,
     customStartDate, customEndDate, setCustomDateRange,
     chartGranularity, setChartGranularity,
-    pageTypeFilter, setPageTypeFilter,
+    pageTypes, togglePageType,
     fetchPerformance, fetchTimeseries,
     triggerSync, isSyncing, latestDataDate,
   } = store;
@@ -47,6 +46,9 @@ export function PerformanceOverview() {
   const [localStart, setLocalStart] = useState(customStartDate);
   const [localEnd, setLocalEnd] = useState(customEndDate);
   const [initialized, setInitialized] = useState(false);
+
+  // Serialize pageTypes Set for stable useEffect dependency
+  const pageTypesKey = Array.from(pageTypes).sort().join(",");
 
   const fetchAll = useCallback(() =>
     Promise.all([fetchPerformance(), fetchTimeseries()]),
@@ -67,29 +69,21 @@ export function PerformanceOverview() {
     }
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialized, dateRange, customStartDate, customEndDate]);
-
-  const filtered = useMemo(() => {
-    if (pageTypeFilter === "all") return performanceData;
-    return performanceData.filter((r) => {
-      if (r.contentMap) return pageTypeFilter === "blog";
-      return classifyPageType(r.page) === pageTypeFilter;
-    });
-  }, [performanceData, pageTypeFilter]);
+  }, [initialized, dateRange, customStartDate, customEndDate, pageTypesKey]);
 
   const summary = useMemo(() => {
-    const totalClicks = filtered.reduce((s, r) => s + r.clicks, 0);
-    const totalImpressions = filtered.reduce((s, r) => s + r.impressions, 0);
+    const totalClicks = performanceData.reduce((s, r) => s + r.clicks, 0);
+    const totalImpressions = performanceData.reduce((s, r) => s + r.impressions, 0);
     const avgCtr = totalImpressions > 0 ? totalClicks / totalImpressions : 0;
-    const avgPosition = filtered.length > 0
-      ? filtered.reduce((s, r) => s + r.position, 0) / filtered.length : 0;
+    const avgPosition = performanceData.length > 0
+      ? performanceData.reduce((s, r) => s + r.position, 0) / performanceData.length : 0;
     return { totalClicks, totalImpressions, avgCtr, avgPosition };
-  }, [filtered]);
+  }, [performanceData]);
 
   const sorted = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1;
-    return [...filtered].sort((a, b) => ((a[sortKey] ?? 0) - (b[sortKey] ?? 0)) * dir);
-  }, [filtered, sortKey, sortDir]);
+    return [...performanceData].sort((a, b) => ((a[sortKey] ?? 0) - (b[sortKey] ?? 0)) * dir);
+  }, [performanceData, sortKey, sortDir]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -189,6 +183,26 @@ export function PerformanceOverview() {
         </div>
       </div>
 
+      {/* Row 2: Page type toggles */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "12px", color: "#999", fontWeight: 500 }}>Show:</span>
+        <div style={{ display: "flex", gap: "4px" }}>
+          {pageTypeOptions.map((opt) => {
+            const active = pageTypes.has(opt.key);
+            return (
+              <button key={opt.key} onClick={() => togglePageType(opt.key)}
+                style={{
+                  padding: "3px 12px", fontSize: "12px", border: "1px solid #e8e6e6", borderRadius: "12px",
+                  background: active ? "#bc9b5d" : "#fff", color: active ? "#fff" : "#414141",
+                  cursor: "pointer", fontWeight: active ? 600 : 400, transition: "all 0.15s",
+                }}>
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Metric Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
         {[
@@ -228,23 +242,17 @@ export function PerformanceOverview() {
         )}
       </div>
 
-      {/* Table header: filter + count + CSV export */}
+      {/* Table header: count + CSV export */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "14px", fontWeight: 600, color: "#000" }}>Pages</span>
-          <select value={pageTypeFilter} onChange={(e) => setPageTypeFilter(e.target.value as PageTypeFilter)}
-            style={{ padding: "4px 8px", fontSize: "13px", border: "1px solid #e8e6e6", borderRadius: "4px", color: "#414141", background: "#fff", cursor: "pointer" }}>
-            {pageTypeOptions.map((opt) => (
-              <option key={opt.key} value={opt.key}>{opt.label}</option>
-            ))}
-          </select>
           {!isLoadingPerformance && (
             <span style={{ fontSize: "12px", color: "#999" }}>
-              {filtered.length} of {performanceData.length} pages
+              {performanceData.length} pages
             </span>
           )}
         </div>
-        {filtered.length > 0 && (
+        {performanceData.length > 0 && (
           <button onClick={exportCsv} style={{ ...btn(false), fontSize: "12px", padding: "3px 10px" }}>
             Export CSV
           </button>
@@ -254,11 +262,9 @@ export function PerformanceOverview() {
       {/* Table */}
       {isLoadingPerformance ? (
         <div style={{ padding: "32px", textAlign: "center", color: "#414141" }}>Loading...</div>
-      ) : filtered.length === 0 ? (
+      ) : performanceData.length === 0 ? (
         <div style={{ padding: "32px", textAlign: "center", color: "#414141" }}>
-          {performanceData.length === 0
-            ? 'No performance data yet. Click "Sync Now" to fetch data from Google Search Console.'
-            : "No pages match the current filter."}
+          No performance data yet. Click &quot;Sync Now&quot; to fetch data from Google Search Console.
         </div>
       ) : (
         <div style={{ overflow: "auto", border: "1px solid #e8e6e6", borderRadius: "8px", maxHeight: "420px" }}>

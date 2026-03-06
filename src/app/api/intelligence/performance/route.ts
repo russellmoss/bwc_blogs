@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     // Support both ?days=N and ?start=YYYY-MM-DD&end=YYYY-MM-DD
     const startParam = searchParams.get("start");
     const endParam = searchParams.get("end");
+    const typesParam = searchParams.get("types"); // e.g. "blog,static"
 
     let since: Date;
     let until: Date | undefined;
@@ -98,10 +99,25 @@ export async function GET(request: NextRequest) {
       contentMap: p.contentMap,
     }));
 
-    // Sort by impressions descending
-    aggregated.sort((a, b) => b.impressions - a.impressions);
+    // Filter by page type if specified
+    const allowedTypes = typesParam
+      ? new Set(typesParam.split(",").filter(Boolean))
+      : null;
 
-    return NextResponse.json({ success: true, data: aggregated });
+    const filtered = allowedTypes
+      ? aggregated.filter((row) => {
+          const path = row.page.replace(/https?:\/\/[^/]+/, "");
+          let type: string = "static";
+          if (path.startsWith("/blog/") || path.startsWith("/post/")) type = "blog";
+          else if (path.startsWith("/product-page/") || path.startsWith("/category/")) type = "product";
+          return allowedTypes.has(type);
+        })
+      : aggregated;
+
+    // Sort by impressions descending
+    filtered.sort((a, b) => b.impressions - a.impressions);
+
+    return NextResponse.json({ success: true, data: filtered });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (message === "AUTH_REQUIRED") {

@@ -8,6 +8,13 @@ export interface TimeseriesPoint {
   impressions: number;
 }
 
+function classifyPageType(page: string): "blog" | "product" | "static" {
+  const path = page.replace(/https?:\/\/[^/]+/, "");
+  if (path.startsWith("/blog/") || path.startsWith("/post/")) return "blog";
+  if (path.startsWith("/product-page/") || path.startsWith("/category/")) return "product";
+  return "static";
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireRole("admin", "editor", "viewer");
@@ -15,6 +22,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const startParam = searchParams.get("start");
     const endParam = searchParams.get("end");
+    const typesParam = searchParams.get("types"); // e.g. "blog,static"
 
     if (!startParam || !endParam) {
       return NextResponse.json(
@@ -27,15 +35,20 @@ export async function GET(request: NextRequest) {
     const until = new Date(endParam);
     until.setDate(until.getDate() + 1);
 
+    const allowedTypes = typesParam
+      ? new Set(typesParam.split(",").filter(Boolean))
+      : null; // null = all types
+
     const rows = await prisma.articlePerformance.findMany({
       where: { date: { gte: since, lte: until } },
-      select: { date: true, clicks: true, impressions: true },
+      select: { date: true, page: true, clicks: true, impressions: true },
       orderBy: { date: "asc" },
     });
 
-    // Aggregate per date (sum across all pages for each day)
+    // Aggregate per date, filtering by page type if specified
     const dateMap = new Map<string, { clicks: number; impressions: number }>();
     for (const row of rows) {
+      if (allowedTypes && !allowedTypes.has(classifyPageType(row.page))) continue;
       const key = row.date.toISOString().split("T")[0];
       const existing = dateMap.get(key);
       if (existing) {
