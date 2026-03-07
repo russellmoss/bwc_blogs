@@ -109,7 +109,7 @@ export function ScorecardPanel() {
   const handleFixInChat = useCallback(
     (suggestion: string) => {
       setIsScorecardOpen(false);
-      setEditingMode("chat");
+      setEditingMode("preview");
       setPendingChatMessage(suggestion);
     },
     [setIsScorecardOpen, setEditingMode, setPendingChatMessage]
