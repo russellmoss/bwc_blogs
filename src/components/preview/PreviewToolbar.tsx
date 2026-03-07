@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Monitor, Smartphone, Eye, Code, CheckCircle, AlertTriangle, XCircle, MessageSquare, Pencil, Undo2, Redo2, Shield } from "lucide-react";
+import { Monitor, Smartphone, Eye, Code, CheckCircle, AlertTriangle, XCircle, Pencil, Undo2, Redo2, Shield, ChevronDown, BookOpen } from "lucide-react";
 import { useArticleStore, selectEffectiveValidation, selectCanUndo, selectCanRedo, selectQaScore } from "@/lib/store/article-store";
 import { VersionNavigator } from "./VersionNavigator";
 import { FinalizeButton } from "@/components/finalization/FinalizeButton";
@@ -9,43 +9,97 @@ import { PublishButton } from "@/components/finalization/PublishButton";
 import { ImportButton } from "@/components/import/ImportButton";
 import { StyleSelector } from "@/components/styles/StyleSelector";
 
-function ToggleButton({
-  active,
-  onClick,
-  icon,
-  label,
+function ToolbarSelect<T extends string>({
+  value,
+  options,
+  onChange,
 }: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
+  value: T;
+  options: { value: T; label: string; icon: React.ReactNode; disabled?: boolean }[];
+  onChange: (value: T) => void;
 }) {
+  const selected = options.find((o) => o.value === value) || options[0];
+  const [open, setOpen] = useState(false);
+
   return (
-    <button
-      onClick={onClick}
-      title={label}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-        padding: "4px 10px",
-        fontSize: "12px",
-        background: active ? "#bc9b5d" : "#ffffff",
-        color: active ? "#ffffff" : "#414141",
-        border: "none",
-        cursor: "pointer",
-      }}
-    >
-      {icon}
-      {label}
-    </button>
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "4px 10px",
+          fontSize: "12px",
+          background: "#ffffff",
+          color: "#414141",
+          border: "1px solid #cccccc",
+          borderRadius: "6px",
+          cursor: "pointer",
+          minWidth: "100px",
+        }}
+      >
+        {selected.icon}
+        {selected.label}
+        <ChevronDown style={{ width: "12px", height: "12px", marginLeft: "auto" }} />
+      </button>
+      {open && (
+        <>
+          <div
+            onClick={() => setOpen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 99 }}
+          />
+          <div style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            marginTop: "4px",
+            background: "#ffffff",
+            border: "1px solid #cccccc",
+            borderRadius: "6px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            zIndex: 100,
+            overflow: "hidden",
+            minWidth: "100%",
+          }}>
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => {
+                  if (!opt.disabled) {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  width: "100%",
+                  background: opt.value === value ? "#f7f5f0" : "transparent",
+                  color: opt.disabled ? "#ccc" : "#414141",
+                  fontWeight: opt.value === value ? 600 : 400,
+                  border: "none",
+                  cursor: opt.disabled ? "not-allowed" : "pointer",
+                  opacity: opt.disabled ? 0.5 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {opt.icon}
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
 export function PreviewToolbar() {
   const {
-    previewMode,
-    setPreviewMode,
     viewportMode,
     setViewportMode,
     editingMode,
@@ -61,6 +115,7 @@ export function PreviewToolbar() {
   const currentDocument = useArticleStore((s) => s.currentDocument);
   const lastFinalizedVersion = useArticleStore((s) => s.lastFinalizedVersion);
   const isImportedHtml = useArticleStore((s) => s.isImportedHtml);
+  const onyxSources = useArticleStore((s) => s.onyxSources);
   const [showDetails, setShowDetails] = useState(false);
 
   // Global keyboard shortcuts for undo/redo
@@ -93,73 +148,27 @@ export function PreviewToolbar() {
       flexShrink: 0,
       position: "relative",
     }}>
-      {/* Preview / HTML toggle */}
-      <div style={{ display: "flex", borderRadius: "6px", border: "1px solid #cccccc", overflow: "hidden" }}>
-        <ToggleButton
-          active={previewMode === "preview"}
-          onClick={() => setPreviewMode("preview")}
-          icon={<Eye style={iconSize} />}
-          label="Preview"
-        />
-        <ToggleButton
-          active={previewMode === "html"}
-          onClick={() => setPreviewMode("html")}
-          icon={<Code style={iconSize} />}
-          label="HTML"
-        />
-      </div>
+      {/* View mode dropdown */}
+      <ToolbarSelect
+        value={editingMode}
+        options={[
+          { value: "preview" as const, label: "Preview", icon: <Eye style={iconSize} /> },
+          { value: "canvas" as const, label: "Canvas", icon: <Pencil style={iconSize} />, disabled: isImportedHtml },
+          { value: "html" as const, label: "HTML", icon: <Code style={iconSize} /> },
+          { value: "citation" as const, label: "Citations", icon: <BookOpen style={iconSize} />, disabled: onyxSources.length === 0 },
+        ]}
+        onChange={setEditingMode}
+      />
 
-      {/* Desktop / Mobile toggle */}
-      <div style={{ display: "flex", borderRadius: "6px", border: "1px solid #cccccc", overflow: "hidden" }}>
-        <ToggleButton
-          active={viewportMode === "desktop"}
-          onClick={() => setViewportMode("desktop")}
-          icon={<Monitor style={iconSize} />}
-          label="Desktop"
-        />
-        <ToggleButton
-          active={viewportMode === "mobile"}
-          onClick={() => setViewportMode("mobile")}
-          icon={<Smartphone style={iconSize} />}
-          label="Mobile"
-        />
-      </div>
-
-      {/* Editing mode toggle */}
-      <div style={{ display: "flex", borderRadius: "6px", border: "1px solid #cccccc", overflow: "hidden" }}>
-        <ToggleButton
-          active={editingMode === "chat"}
-          onClick={() => setEditingMode("chat")}
-          icon={<MessageSquare style={iconSize} />}
-          label={isImportedHtml ? "Preview" : "Chat"}
-        />
-        <button
-          onClick={() => !isImportedHtml && setEditingMode("canvas")}
-          disabled={isImportedHtml}
-          title={isImportedHtml ? "Canvas editing unavailable for imported HTML" : "Canvas"}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "4px 10px",
-            fontSize: "12px",
-            background: editingMode === "canvas" ? "#bc9b5d" : "#ffffff",
-            color: isImportedHtml ? "#ccc" : editingMode === "canvas" ? "#ffffff" : "#414141",
-            border: "none",
-            cursor: isImportedHtml ? "not-allowed" : "pointer",
-            opacity: isImportedHtml ? 0.5 : 1,
-          }}
-        >
-          <Pencil style={iconSize} />
-          Canvas
-        </button>
-        <ToggleButton
-          active={editingMode === "html"}
-          onClick={() => setEditingMode("html")}
-          icon={<Code style={iconSize} />}
-          label="HTML"
-        />
-      </div>
+      {/* Viewport dropdown */}
+      <ToolbarSelect
+        value={viewportMode}
+        options={[
+          { value: "desktop" as const, label: "Desktop", icon: <Monitor style={iconSize} /> },
+          { value: "mobile" as const, label: "Mobile", icon: <Smartphone style={iconSize} /> },
+        ]}
+        onChange={setViewportMode}
+      />
 
       {/* Writing style selector */}
       <StyleSelector />

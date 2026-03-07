@@ -3,6 +3,7 @@ export interface OnyxSearchResult {
   content: string;
   sourceDocument: string; // Filename or document title
   score: number;
+  link: string; // Google Drive URL (from Onyx)
   metadata: Record<string, unknown>;
 }
 

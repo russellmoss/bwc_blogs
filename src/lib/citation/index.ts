@@ -1,0 +1,1 @@
+export { computeCitationMatches } from "./matcher";

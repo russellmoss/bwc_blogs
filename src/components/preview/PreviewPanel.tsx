@@ -3,14 +3,14 @@
 import { useArticleStore } from "@/lib/store/article-store";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { PreviewIframe } from "./PreviewIframe";
-import { HtmlSourceView } from "./HtmlSourceView";
 import { CanvasEditOverlay } from "@/components/canvas-edit";
 import { HtmlEditor } from "@/components/html-editor";
 import { ScorecardPanel } from "@/components/scorecard";
 import { ExportPanel } from "@/components/finalization/ExportPanel";
+import { CitationView } from "./CitationView";
 
 export function PreviewPanel() {
-  const { previewMode, editingMode } = useArticleStore();
+  const editingMode = useArticleStore((s) => s.editingMode);
   const lastFinalizedVersion = useArticleStore((s) => s.lastFinalizedVersion);
   const currentHtml = useArticleStore((s) => s.currentHtml);
   const currentDocument = useArticleStore((s) => s.currentDocument);
@@ -30,15 +30,15 @@ export function PreviewPanel() {
         </div>
       )}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        {editingMode === "html" ? (
+        {editingMode === "citation" ? (
+          <CitationView />
+        ) : editingMode === "html" ? (
           <HtmlEditor />
-        ) : previewMode === "preview" ? (
+        ) : (
           <>
             <PreviewIframe />
             {editingMode === "canvas" && <CanvasEditOverlay />}
           </>
-        ) : (
-          <HtmlSourceView />
         )}
         <ScorecardPanel />
       </div>

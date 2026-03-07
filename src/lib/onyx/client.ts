@@ -98,6 +98,7 @@ interface OnyxSearchDoc {
   semantic_identifier?: string;
   score?: number | null;
   source_type?: string;
+  link?: string;
   match_highlights?: string[];
   metadata?: Record<string, unknown>;
 }
@@ -108,6 +109,7 @@ function mapSearchDoc(doc: OnyxSearchDoc): OnyxSearchResult {
     content: doc.blurb ?? "",
     sourceDocument: doc.semantic_identifier ?? "Unknown",
     score: doc.score ?? 0,
+    link: doc.link ?? "",
     metadata: {
       ...doc.metadata,
       sourceType: doc.source_type,

@@ -1,6 +1,7 @@
 import type { CanonicalArticleDocument } from "./article";
 import type { PhotoManifest } from "./photo";
 import type { ValidationResult } from "./api";
+import type { OnyxSearchResult } from "./onyx";
 
 export interface ConversationMessage {
   role: "user" | "assistant";
@@ -55,6 +56,7 @@ export interface GenerateArticleResponse {
   conversationReply: string;
   tokensUsed: { input: number; output: number };
   webSearchResults: WebSearchResult[];
+  onyxSources?: OnyxSearchResult[];
 }
 
 // === SSE streaming event types ===

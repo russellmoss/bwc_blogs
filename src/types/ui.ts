@@ -6,12 +6,13 @@ import type { HtmlOverride } from "./renderer";
 import type { QAScore } from "./qa";
 import type { DeterministicFixResult } from "./qa-fix";
 import type { PhotoManifest } from "./photo";
+import type { OnyxSearchResult } from "./onyx";
+import type { CitationMatch } from "./citation";
 
 // === UI Mode Types ===
 
-export type PreviewMode = "preview" | "html";
 export type ViewportMode = "desktop" | "mobile";
-export type EditingMode = "chat" | "canvas" | "html";
+export type EditingMode = "preview" | "canvas" | "html" | "citation";
 
 // === Version History ===
 
@@ -60,7 +61,6 @@ export interface ArticleEditorState {
   conversationHistory: ConversationMessage[];
 
   // UI state
-  previewMode: PreviewMode;
   viewportMode: ViewportMode;
   editingMode: EditingMode;
 
@@ -94,6 +94,10 @@ export interface ArticleEditorState {
 
   // Writing style
   selectedStyleId: number | null;
+
+  // Citation sources
+  onyxSources: OnyxSearchResult[];
+  citationMatches: CitationMatch[] | null;
 }
 
 export interface ArticleEditorActions {
@@ -120,7 +124,6 @@ export interface ArticleEditorActions {
   rollbackToVersion: (versionNumber: number) => void;
 
   // UI toggles
-  setPreviewMode: (mode: PreviewMode) => void;
   setViewportMode: (mode: ViewportMode) => void;
   setEditingMode: (mode: EditingMode) => void;
 
@@ -163,6 +166,10 @@ export interface ArticleEditorActions {
 
   // Writing style
   setSelectedStyleId: (id: number | null) => void;
+
+  // Citation sources
+  setOnyxSources: (sources: OnyxSearchResult[]) => void;
+  setCitationMatches: (matches: CitationMatch[] | null) => void;
 
   // Reset
   resetEditor: () => void;

@@ -16,15 +16,22 @@ function fixMetaTitle(doc: CanonicalArticleDocument): DeterministicFixResult | n
   if (len >= 50 && len <= 60) return null; // already valid
 
   if (len > 60) {
-    // Trim at word boundary, append ellipsis if needed
-    let trimmed = doc.metaTitle.slice(0, 59);
-    const lastSpace = trimmed.lastIndexOf(" ");
-    if (lastSpace > 40) trimmed = trimmed.slice(0, lastSpace);
-    // Ensure within range
-    if (trimmed.length < 50) return null; // can't trim safely
+    // Try to find a word boundary within 50-60 range
+    for (let i = 60; i >= 50; i--) {
+      if (doc.metaTitle[i] === " ") {
+        const trimmed = doc.metaTitle.slice(0, i);
+        if (trimmed.length >= 50) {
+          return {
+            mutations: [{ cadPath: "metaTitle", value: trimmed }],
+            summary: `Trimmed meta title from ${len} to ${trimmed.length} chars`,
+          };
+        }
+      }
+    }
+    // No word boundary in range — hard cut at 60
     return {
-      mutations: [{ cadPath: "metaTitle", value: trimmed }],
-      summary: `Trimmed meta title from ${len} to ${trimmed.length} chars`,
+      mutations: [{ cadPath: "metaTitle", value: doc.metaTitle.slice(0, 60) }],
+      summary: `Trimmed meta title from ${len} to 60 chars`,
     };
   }
 
@@ -38,13 +45,35 @@ function fixMetaDescription(doc: CanonicalArticleDocument): DeterministicFixResu
   if (len >= 150 && len <= 160) return null;
 
   if (len > 160) {
-    let trimmed = doc.metaDescription.slice(0, 159);
-    const lastSpace = trimmed.lastIndexOf(" ");
-    if (lastSpace > 140) trimmed = trimmed.slice(0, lastSpace);
-    if (trimmed.length < 150) return null;
+    // Try to find a word boundary within 150-160 range
+    const candidate = doc.metaDescription.slice(0, 160);
+    // Search backwards from position 160 for a space that lands us in range
+    for (let i = 160; i >= 150; i--) {
+      if (doc.metaDescription[i] === " ") {
+        const trimmed = doc.metaDescription.slice(0, i);
+        if (trimmed.length >= 150) {
+          return {
+            mutations: [{ cadPath: "metaDescription", value: trimmed }],
+            summary: `Trimmed meta description from ${len} to ${trimmed.length} chars`,
+          };
+        }
+      }
+    }
+    // No word boundary in 150-160 range — try ending at a period or comma
+    const punctMatch = candidate.slice(150).match(/[.,;:!?]/);
+    if (punctMatch && punctMatch.index !== undefined) {
+      const trimmed = candidate.slice(0, 150 + punctMatch.index + 1).trimEnd();
+      if (trimmed.length >= 150 && trimmed.length <= 160) {
+        return {
+          mutations: [{ cadPath: "metaDescription", value: trimmed }],
+          summary: `Trimmed meta description from ${len} to ${trimmed.length} chars`,
+        };
+      }
+    }
+    // Last resort: hard cut at 160 (may cut mid-word, but better than not fixing)
     return {
-      mutations: [{ cadPath: "metaDescription", value: trimmed }],
-      summary: `Trimmed meta description from ${len} to ${trimmed.length} chars`,
+      mutations: [{ cadPath: "metaDescription", value: candidate }],
+      summary: `Trimmed meta description from ${len} to ${candidate.length} chars`,
     };
   }
 

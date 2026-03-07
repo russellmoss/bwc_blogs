@@ -1,5 +1,6 @@
 import type { PromptLayer } from "@/types/claude";
 import type { PhotoManifest } from "@/types/photo";
+import type { OnyxSearchResult } from "@/types/onyx";
 import type { ArticleBrief } from "@/lib/onyx";
 import { buildLayerSop } from "./layer-sop";
 import { buildLayerStyleGuide } from "./layer-style-guide";
@@ -14,6 +15,7 @@ export interface AssembledPrompt {
   systemPrompt: string;
   layers: PromptLayer[];
   totalTokenEstimate: number;
+  onyxSources: OnyxSearchResult[];
 }
 
 const OUTPUT_FORMAT_INSTRUCTION = `
@@ -27,6 +29,7 @@ CRITICAL RULES:
 - Every content node must have a unique "id" field: "node-1", "node-2", etc.
 - All internal links must target URLs from the Link Graph above
 - All external links must include trustTier and sourceName
+- NEVER use em dashes (—) or en dashes (–). Use commas, semicolons, colons, or parentheses instead. If you catch yourself writing "—", rewrite the sentence.
 - executiveSummary: 25-40 words
 - metaTitle: 50-60 characters
 - metaDescription: 150-160 characters
@@ -80,10 +83,11 @@ export async function assembleSystemPrompt(
   };
 
   // Parallel: KB context + link graph
-  const [layerKbContext, layerLinkGraph] = await Promise.all([
+  const [kbResult, layerLinkGraph] = await Promise.all([
     buildLayerKbContext(brief),
     buildLayerLinkGraph(articleId),
   ]);
+  const { layer: layerKbContext, onyxSources } = kbResult;
 
   const layerPhotoManifest = buildLayerPhotoManifest(photoManifest);
 
@@ -109,5 +113,5 @@ export async function assembleSystemPrompt(
   const systemPrompt = sections.join("\n\n");
   const totalTokenEstimate = layers.reduce((sum, l) => sum + l.tokenEstimate, 0);
 
-  return { systemPrompt, layers, totalTokenEstimate };
+  return { systemPrompt, layers, totalTokenEstimate, onyxSources };
 }

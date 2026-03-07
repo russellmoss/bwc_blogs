@@ -1,28 +1,11 @@
 import type { OnyxContext, OnyxSearchResult } from "@/types/onyx";
+import { buildTrigrams, trigramSimilarity } from "@/lib/util/trigram";
 
 const MAX_CONTEXT_CHARS = 8000;
 const SIMILARITY_THRESHOLD = 0.45;
 
 const EMPTY_CONTEXT = `=== Knowledge Base Context ===
 [No relevant knowledge base content found. Generate article using general knowledge and provided instructions.]`;
-
-function buildTrigrams(text: string): Set<string> {
-  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
-  const trigrams = new Set<string>();
-  for (let i = 0; i <= normalized.length - 3; i++) {
-    trigrams.add(normalized.slice(i, i + 3));
-  }
-  return trigrams;
-}
-
-function trigramSimilarity(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let intersection = 0;
-  for (const trigram of a) {
-    if (b.has(trigram)) intersection++;
-  }
-  return intersection / (a.size + b.size - intersection);
-}
 
 function isTooSimilar(
   candidate: Set<string>,
@@ -36,7 +19,12 @@ function isTooSimilar(
   return false;
 }
 
-export function assembleOnyxContext(contexts: OnyxContext[]): string {
+export interface AssembledOnyxContext {
+  text: string;
+  sources: OnyxSearchResult[];
+}
+
+export function assembleOnyxContext(contexts: OnyxContext[]): AssembledOnyxContext {
   // Flatten all results from all contexts
   const allResults: OnyxSearchResult[] = [];
   for (const ctx of contexts) {
@@ -56,7 +44,7 @@ export function assembleOnyxContext(contexts: OnyxContext[]): string {
   const dedupedResults = Array.from(dedupMap.values());
 
   if (dedupedResults.length === 0) {
-    return EMPTY_CONTEXT;
+    return { text: EMPTY_CONTEXT, sources: [] };
   }
 
   // Sort by score descending
@@ -71,6 +59,7 @@ export function assembleOnyxContext(contexts: OnyxContext[]): string {
   let nearDuplicatesFiltered = 0;
   const sourcesIncluded = new Set<string>();
   const includedTrigrams: Set<string>[] = [];
+  const includedSources: OnyxSearchResult[] = [];
 
   for (const result of dedupedResults) {
     const candidateTrigrams = buildTrigrams(result.content);
@@ -90,10 +79,11 @@ export function assembleOnyxContext(contexts: OnyxContext[]): string {
     passagesIncluded++;
     sourcesIncluded.add(result.sourceDocument);
     includedTrigrams.push(candidateTrigrams);
+    includedSources.push(result);
   }
 
   const footer = `\n[${sourcesIncluded.size} unique sources retrieved, ${passagesIncluded} total passages, ${nearDuplicatesFiltered} near-duplicates filtered]`;
   output += footer;
 
-  return output;
+  return { text: output, sources: includedSources };
 }

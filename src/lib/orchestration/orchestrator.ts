@@ -25,7 +25,7 @@ export async function generateArticle(
 
   // Step 1: Assemble the 7-layer system prompt
   emit("status", { message: "Assembling system prompt..." });
-  const { systemPrompt, layers, totalTokenEstimate } = await assembleSystemPrompt(
+  const { systemPrompt, layers, totalTokenEstimate, onyxSources } = await assembleSystemPrompt(
     request.articleId,
     request.photoManifest,
     request.selectedStyleId ?? null
@@ -82,6 +82,7 @@ export async function generateArticle(
       parseResult.conversationReply || `Article generated successfully (${postResult.wordCount} words).`,
     tokensUsed: streamResult.tokensUsed,
     webSearchResults: streamResult.webSearchResults,
+    onyxSources,
   };
 
   emit("complete", response);

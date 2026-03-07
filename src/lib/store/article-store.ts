@@ -9,7 +9,6 @@ import type {
   ArticleEditorState,
   ArticleEditorActions,
   ArticleVersion,
-  PreviewMode,
   ViewportMode,
   EditingMode,
 } from "@/types/ui";
@@ -108,9 +107,8 @@ const initialState: ArticleEditorState = {
   versionHistory: [],
   activeVersionNumber: null,
   conversationHistory: [],
-  previewMode: "preview",
   viewportMode: "desktop",
-  editingMode: "chat",
+  editingMode: "preview",
   undoStack: [],
   redoStack: [],
   isCanvasEditing: false,
@@ -128,6 +126,8 @@ const initialState: ArticleEditorState = {
   isImportedHtml: false,
   importSource: null,
   selectedStyleId: null,
+  onyxSources: [],
+  citationMatches: null,
 };
 
 export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>(
@@ -159,6 +159,8 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         lastFinalizedVersion: null,
         isImportedHtml: false,
         importSource: null,
+        onyxSources: [],
+        citationMatches: null,
       }),
 
     // Generation
@@ -239,6 +241,8 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
               timestamp: new Date().toISOString(),
             },
           ],
+          onyxSources: response.onyxSources ?? state.onyxSources,
+          citationMatches: null, // recompute on next Citation view
         };
       }),
 
@@ -325,7 +329,6 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
     },
 
     // UI toggles
-    setPreviewMode: (mode: PreviewMode) => set({ previewMode: mode }),
     setViewportMode: (mode: ViewportMode) => set({ viewportMode: mode }),
     setEditingMode: (mode: EditingMode) => set({ editingMode: mode }),
 
@@ -905,8 +908,7 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         currentDocument: syntheticDoc,
         isImportedHtml: true,
         importSource: source,
-        editingMode: "chat",
-        previewMode: "preview",
+        editingMode: "preview",
         undoStack: newUndoStack,
         redoStack: [],
         qaScore: null,
@@ -924,6 +926,10 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
 
     // Writing style
     setSelectedStyleId: (id: number | null) => set({ selectedStyleId: id }),
+
+    // Citation sources
+    setOnyxSources: (sources) => set({ onyxSources: sources }),
+    setCitationMatches: (matches) => set({ citationMatches: matches }),
 
     // Reset
     resetEditor: () => set(initialState),

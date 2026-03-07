@@ -1,15 +1,21 @@
 import { buildSearchQueries, searchOnyxMulti, assembleOnyxContext } from "@/lib/onyx";
 import type { ArticleBrief } from "@/lib/onyx";
 import type { PromptLayer } from "@/types/claude";
+import type { OnyxSearchResult } from "@/types/onyx";
 
-export async function buildLayerKbContext(brief: ArticleBrief): Promise<PromptLayer> {
+export async function buildLayerKbContext(
+  brief: ArticleBrief
+): Promise<{ layer: PromptLayer; onyxSources: OnyxSearchResult[] }> {
   const queries = buildSearchQueries(brief);
   const contexts = await searchOnyxMulti(queries);
-  const content = assembleOnyxContext(contexts);
+  const { text, sources } = assembleOnyxContext(contexts);
 
   return {
-    name: "Knowledge Base Context",
-    content,
-    tokenEstimate: Math.ceil(content.length / 4),
+    layer: {
+      name: "Knowledge Base Context",
+      content: text,
+      tokenEstimate: Math.ceil(text.length / 4),
+    },
+    onyxSources: sources,
   };
 }
