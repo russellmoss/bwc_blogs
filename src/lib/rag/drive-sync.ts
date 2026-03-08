@@ -57,14 +57,48 @@ async function getStartPageToken(): Promise<string> {
 }
 
 /**
+ * Recursively collect all subfolder IDs under a root folder.
+ */
+async function getAllFolderIds(token: string, rootFolderId: string): Promise<Set<string>> {
+  const folderIds = new Set<string>([rootFolderId]);
+  const queue: string[] = [rootFolderId];
+
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const url = new URL("https://www.googleapis.com/drive/v3/files");
+    url.searchParams.set("q", `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+    url.searchParams.set("fields", "files(id)");
+    url.searchParams.set("pageSize", "100");
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) continue;
+
+    const data = await response.json();
+    for (const f of data.files ?? []) {
+      if (!folderIds.has(f.id)) {
+        folderIds.add(f.id);
+        queue.push(f.id);
+      }
+    }
+  }
+
+  return folderIds;
+}
+
+/**
  * Fetch changes from Google Drive since the last sync.
+ * Resolves all subfolder IDs under the root docs folder so we catch
+ * changes to files at any nesting level.
  */
 async function fetchDriveChanges(pageToken: string): Promise<{
   changes: DriveChange[];
   newPageToken: string;
 }> {
   const token = await getAccessToken();
-  const folderId = env.GOOGLE_DRIVE_DOCS_FOLDER_ID;
+  const rootFolderId = env.GOOGLE_DRIVE_DOCS_FOLDER_ID;
+  const knownFolderIds = await getAllFolderIds(token, rootFolderId);
   const allChanges: DriveChange[] = [];
   let currentToken = pageToken;
   let newStartPageToken = pageToken;
@@ -83,16 +117,17 @@ async function fetchDriveChanges(pageToken: string): Promise<{
 
     const data = await response.json();
 
-    // Filter to only files in our target folder
     for (const change of data.changes ?? []) {
       if (change.removed) {
+        // Can't check parents on removed files — only process if we indexed it
         allChanges.push({ fileId: change.fileId, removed: true });
         continue;
       }
       const file = change.file;
       if (!file) continue;
       const parents: string[] = file.parents ?? [];
-      if (parents.includes(folderId)) {
+      // Accept if any parent is in our folder tree
+      if (parents.some((p) => knownFolderIds.has(p))) {
         allChanges.push({
           fileId: change.fileId,
           removed: file.trashed === true,
@@ -297,12 +332,13 @@ export async function runIncrementalSync(): Promise<RagSyncResult> {
 }
 
 /**
- * List all files in the docs folder (for initial bulk indexing).
+ * List all files in a single folder (non-recursive helper).
  */
-export async function listAllDocsFiles(): Promise<DriveFile[]> {
-  const token = await getAccessToken();
-  const folderId = env.GOOGLE_DRIVE_DOCS_FOLDER_ID;
-  const allFiles: DriveFile[] = [];
+async function listFolderFiles(
+  token: string,
+  folderId: string
+): Promise<DriveFile[]> {
+  const files: DriveFile[] = [];
   let pageToken: string | undefined;
 
   while (true) {
@@ -318,12 +354,37 @@ export async function listAllDocsFiles(): Promise<DriveFile[]> {
     if (!response.ok) throw new Error(`Drive list failed: ${response.status}`);
 
     const data = await response.json();
-    allFiles.push(...(data.files ?? []));
+    files.push(...(data.files ?? []));
 
     if (data.nextPageToken) {
       pageToken = data.nextPageToken;
     } else {
       break;
+    }
+  }
+
+  return files;
+}
+
+/**
+ * List all files in the docs folder, recursing into subfolders.
+ */
+export async function listAllDocsFiles(): Promise<DriveFile[]> {
+  const token = await getAccessToken();
+  const rootFolderId = env.GOOGLE_DRIVE_DOCS_FOLDER_ID;
+  const allFiles: DriveFile[] = [];
+  const folderQueue: string[] = [rootFolderId];
+
+  while (folderQueue.length > 0) {
+    const currentFolderId = folderQueue.shift()!;
+    const items = await listFolderFiles(token, currentFolderId);
+
+    for (const item of items) {
+      if (item.mimeType === "application/vnd.google-apps.folder") {
+        folderQueue.push(item.id);
+      } else {
+        allFiles.push(item);
+      }
     }
   }
 
