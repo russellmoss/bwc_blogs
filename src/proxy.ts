@@ -16,6 +16,6 @@ export const config = {
      * - /api/capture (public lead capture from Wix)
      * - /_next, /favicon.ico, etc. (static assets)
      */
-    "/((?!login|api/auth|api/health|api/capture|_next|favicon.ico).*)",
+    "/((?!login|api/auth|api/health|api/capture|api/rag|api/cron|_next|favicon.ico).*)",
   ],
 };

@@ -3,7 +3,7 @@ import { env } from "@/lib/env";
 
 const MODEL_ID = "text-embedding-004";
 const EMBEDDING_DIMENSION = 768;
-const MAX_BATCH_SIZE = 250; // Vertex AI limit per request
+const MAX_BATCH_SIZE = 80; // Vertex AI ~20k token limit per request; ~150 tok/chunk avg
 
 export { EMBEDDING_DIMENSION };
 
