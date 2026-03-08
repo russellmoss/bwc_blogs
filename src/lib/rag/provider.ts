@@ -12,7 +12,7 @@ let cachedType: string | null = null;
  * Reads RAG_PROVIDER env var: "onyx" | "custom" | "both"
  */
 export function getRagProvider(): RagProvider {
-  const providerType = (env.RAG_PROVIDER || "onyx") as RagProviderType;
+  const providerType = (env.RAG_PROVIDER || "custom") as RagProviderType;
 
   // Cache by type (allows hot-swapping in tests by changing env)
   if (cached && cachedType === providerType) return cached;
