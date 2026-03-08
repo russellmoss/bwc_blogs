@@ -36,6 +36,14 @@ export async function embedText(text: string): Promise<number[]> {
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
+// Vertex AI text-embedding-004 supports max 20k tokens (~80k chars)
+const MAX_CHARS_PER_TEXT = 75000;
+
+function truncateForEmbedding(text: string): string {
+  if (text.length <= MAX_CHARS_PER_TEXT) return text;
+  console.warn(`[embedder] Truncating text from ${text.length} to ${MAX_CHARS_PER_TEXT} chars`);
+  return text.slice(0, MAX_CHARS_PER_TEXT);
+}
 
 async function embedBatch(texts: string[]): Promise<number[][]> {
   const projectId = getProjectId();
@@ -43,7 +51,7 @@ async function embedBatch(texts: string[]): Promise<number[][]> {
   const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${MODEL_ID}:predict`;
   const body = JSON.stringify({
     instances: texts.map((text) => ({
-      content: text,
+      content: truncateForEmbedding(text),
       task_type: "RETRIEVAL_DOCUMENT",
     })),
     parameters: { outputDimensionality: EMBEDDING_DIMENSION },

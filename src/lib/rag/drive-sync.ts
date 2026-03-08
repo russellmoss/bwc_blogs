@@ -245,7 +245,7 @@ export async function indexFile(
         data: { md5Checksum: driveFile.md5Checksum },
       });
     }
-  });
+  }, { timeout: 30000 }); // Neon default is 5s, large files need more for sequential inserts
 
   return chunks.length;
 }
