@@ -50,6 +50,10 @@ See `docs/_generated/prisma-models.md` for auto-generated field-level inventory.
 | **WritingStyle** | Writing style templates — name, slug, content, isDefault |
 | **ArticlePerformance** | GSC metrics per page per day — clicks, impressions, ctr, position; nullable contentMapId for unmatched pages; unique on (page, date) |
 | **ContentRecommendation** | Claude-generated content recommendations — type, priority, status, suggestedPrompt |
+| **ArticleQueryPerformance** | GSC query-level metrics — page, query, clicks, impressions, ctr, position per day |
+| **RagDocument** | Drive files indexed for RAG — driveFileId, filename, md5Checksum, chunkCount |
+| **RagChunk** | Embedded text chunks — content, tokenCount, headingContext, vector(768) embedding |
+| **RagSyncState** | Sync cursor — startPageToken for incremental Drive Changes API sync |
 
 ## API Routes
 
@@ -111,6 +115,14 @@ See `docs/_generated/api-routes.md` for auto-generated route inventory.
 |-------|---------|---------|
 | `/api/onyx/health` | GET | Checks RAG index health and document count |
 | `/api/onyx/search` | POST | Queries Onyx CE for knowledge base context |
+
+### Custom RAG (3 routes)
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/rag/sync` | POST | Incremental Drive sync — CRON_SECRET auth, triggered by GitHub Actions |
+| `/api/rag/health` | GET | Health check — document/chunk counts, sync status |
+| `/api/rag/compare` | POST | A/B comparison — runs both Onyx and custom, returns side-by-side metrics |
 
 ### Photos (6 routes)
 

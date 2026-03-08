@@ -1,0 +1,28 @@
+name: RAG Sync
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger RAG sync
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ vars.VERCEL_APP_URL }}/api/rag/sync" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+
+          echo "Status: $http_code"
+          echo "Response: $body"
+
+          if [ "$http_code" != "200" ]; then
+            echo "::error::RAG sync failed with status $http_code"
+            exit 1
+          fi

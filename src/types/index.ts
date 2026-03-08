@@ -12,3 +12,4 @@ export * from "./qa-fix";
 export * from "./activity";
 export * from "./intelligence";
 export * from "./citation";
+export * from "./rag";
