@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2, UserPlus, Eye, EyeOff, KeyRound, Activity, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, Trash2, UserPlus, Eye, EyeOff, KeyRound, Activity, ChevronLeft, ChevronRight, X, Database, RefreshCw } from "lucide-react";
 
 function PasswordInput({ value, onChange, placeholder, required, minLength, style }: {
   value: string;
@@ -985,6 +985,198 @@ function ActivityLogSection() {
   );
 }
 
+// ── Knowledge Base Section ───────────────────────────────────────────
+
+interface KbHealth {
+  provider: string;
+  healthy: boolean;
+  documentCount: number;
+  chunkCount: number;
+  lastSyncAt: string | null;
+  lastSyncPageToken: string | null;
+}
+
+interface SyncResult {
+  filesProcessed: number;
+  filesDeleted: number;
+  chunksCreated: number;
+  errors: string[];
+  durationMs: number;
+}
+
+function KnowledgeBaseSection() {
+  const [health, setHealth] = useState<KbHealth | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [error, setError] = useState("");
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/rag/health");
+      const data = await res.json();
+      if (data.success) {
+        setHealth(data.data);
+        setError("");
+      } else {
+        setError(data.error?.message || "Failed to load KB status");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHealth();
+  }, [fetchHealth]);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncResult(null);
+    setError("");
+    try {
+      const res = await fetch("/api/rag/sync", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setSyncResult(data.data);
+        // Refresh health stats
+        fetchHealth();
+      } else {
+        setError(data.error?.message || "Sync failed");
+      }
+    } catch {
+      setError("Network error during sync");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function formatSyncTime(iso: string | null): string {
+    if (!iso) return "Never";
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      + ", "
+      + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  }
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e8e6e6", borderRadius: "8px", padding: "24px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Database style={{ width: "18px", height: "18px", color: "#bc9b5d" }} />
+          <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#000", margin: 0 }}>
+            Knowledge Base
+          </h2>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "8px 16px",
+            background: syncing ? "#f7f7f7" : "#000",
+            color: syncing ? "#888" : "#fff",
+            border: syncing ? "1px solid #ccc" : "none",
+            borderRadius: "6px",
+            fontSize: "13px",
+            fontWeight: 500,
+            cursor: syncing ? "not-allowed" : "pointer",
+          }}
+        >
+          <RefreshCw style={{
+            width: "14px",
+            height: "14px",
+            animation: syncing ? "spin 1s linear infinite" : "none",
+          }} />
+          {syncing ? "Syncing..." : "Sync Knowledge Base"}
+        </button>
+      </div>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
+      {loading ? (
+        <p style={{ fontSize: "13px", color: "#888" }}>Loading KB status...</p>
+      ) : error && !health ? (
+        <p style={{ fontSize: "13px", color: "#b91c1c" }}>{error}</p>
+      ) : health ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {/* Stats row */}
+          <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+            <div style={{ padding: "12px 16px", background: "#f7f7f7", borderRadius: "6px", minWidth: "120px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 500, color: "#888", textTransform: "uppercase", marginBottom: "4px" }}>Documents</div>
+              <div style={{ fontSize: "24px", fontWeight: 600, color: "#000" }}>{health.documentCount}</div>
+            </div>
+            <div style={{ padding: "12px 16px", background: "#f7f7f7", borderRadius: "6px", minWidth: "120px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 500, color: "#888", textTransform: "uppercase", marginBottom: "4px" }}>Chunks</div>
+              <div style={{ fontSize: "24px", fontWeight: 600, color: "#000" }}>{health.chunkCount}</div>
+            </div>
+            <div style={{ padding: "12px 16px", background: "#f7f7f7", borderRadius: "6px", minWidth: "120px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 500, color: "#888", textTransform: "uppercase", marginBottom: "4px" }}>Status</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                <span style={{
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  background: health.healthy ? "#15803d" : "#b91c1c",
+                  display: "inline-block",
+                }} />
+                <span style={{ fontSize: "14px", fontWeight: 500, color: health.healthy ? "#15803d" : "#b91c1c" }}>
+                  {health.healthy ? "Healthy" : "Unhealthy"}
+                </span>
+              </div>
+            </div>
+            <div style={{ padding: "12px 16px", background: "#f7f7f7", borderRadius: "6px", minWidth: "160px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 500, color: "#888", textTransform: "uppercase", marginBottom: "4px" }}>Last Sync</div>
+              <div style={{ fontSize: "13px", fontWeight: 500, color: "#414141", marginTop: "6px" }}>
+                {formatSyncTime(health.lastSyncAt)}
+              </div>
+            </div>
+          </div>
+
+          <p style={{ fontSize: "12px", color: "#888", margin: 0 }}>
+            Syncs changed files from Google Drive. Only new or modified documents are re-indexed.
+          </p>
+
+          {/* Sync result */}
+          {syncResult && (
+            <div style={{
+              padding: "12px 16px",
+              background: syncResult.errors.length > 0 ? "#fef2f2" : "#f0fdf4",
+              borderRadius: "6px",
+              fontSize: "13px",
+            }}>
+              <div style={{ fontWeight: 500, color: syncResult.errors.length > 0 ? "#b91c1c" : "#15803d", marginBottom: "4px" }}>
+                Sync completed in {(syncResult.durationMs / 1000).toFixed(1)}s
+              </div>
+              <div style={{ color: "#414141", fontSize: "12px" }}>
+                {syncResult.filesProcessed} file{syncResult.filesProcessed !== 1 ? "s" : ""} updated,{" "}
+                {syncResult.chunksCreated} chunk{syncResult.chunksCreated !== 1 ? "s" : ""} created,{" "}
+                {syncResult.filesDeleted} deleted
+              </div>
+              {syncResult.errors.length > 0 && (
+                <div style={{ marginTop: "8px", color: "#b91c1c", fontSize: "12px" }}>
+                  {syncResult.errors.map((err, i) => (
+                    <div key={i}>{err}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Error from sync attempt */}
+          {error && (
+            <p style={{ fontSize: "13px", color: "#b91c1c", margin: 0 }}>{error}</p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ── Settings Page ────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -1018,6 +1210,7 @@ export default function SettingsPage() {
         </h1>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <KnowledgeBaseSection />
           <ChangePasswordSection />
           <UserManagementSection />
           <ActivityLogSection />

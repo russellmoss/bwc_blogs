@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getRagProvider } from "@/lib/rag";
+import { getCurrentUser } from "@/lib/auth/session";
 import type { RagHealthResponse } from "@/types/rag";
 
 export async function GET(request: NextRequest) {
+  // Accept either CRON_SECRET or session auth
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const hasCronAuth = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  const user = !hasCronAuth ? await getCurrentUser() : null;
+  if (!hasCronAuth && !user) {
     return NextResponse.json(
-      { success: false, error: { code: "AUTH_REQUIRED", message: "Invalid cron secret" } },
+      { success: false, error: { code: "AUTH_REQUIRED", message: "Authentication required" } },
       { status: 401 }
     );
   }
