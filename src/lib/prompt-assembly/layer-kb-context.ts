@@ -1,4 +1,6 @@
-import { buildSearchQueries, searchOnyxMulti, assembleOnyxContext } from "@/lib/onyx";
+import { buildSearchQueries } from "@/lib/onyx";
+import { assembleOnyxContext } from "@/lib/onyx";
+import { getRagProvider } from "@/lib/rag";
 import type { ArticleBrief } from "@/lib/onyx";
 import type { PromptLayer } from "@/types/claude";
 import type { OnyxSearchResult } from "@/types/onyx";
@@ -7,7 +9,8 @@ export async function buildLayerKbContext(
   brief: ArticleBrief
 ): Promise<{ layer: PromptLayer; onyxSources: OnyxSearchResult[] }> {
   const queries = buildSearchQueries(brief);
-  const contexts = await searchOnyxMulti(queries);
+  const provider = getRagProvider();
+  const contexts = await provider.searchMulti(queries);
   const { text, sources } = assembleOnyxContext(contexts);
 
   return {

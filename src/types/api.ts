@@ -31,6 +31,7 @@ export type ErrorCode =
   | "GSC_UNAVAILABLE"
   | "GSC_SYNC_FAILED"
   | "INTELLIGENCE_ERROR"
+  | "RAG_SYNC_FAILED"
   | "INTERNAL_ERROR";
 
 // Validation result returned by article schema validation

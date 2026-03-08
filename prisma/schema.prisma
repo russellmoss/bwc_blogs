@@ -86,6 +86,7 @@ model ContentMap {
   leads            Lead[]
   performanceData      ArticlePerformance[]
   recommendations      ContentRecommendation[]
+  queryPerformanceData ArticleQueryPerformance[]
 
   @@map("content_map")
 }
@@ -287,4 +288,73 @@ model ContentRecommendation {
   contentMap           ContentMap? @relation(fields: [contentMapId], references: [id])
 
   @@map("content_recommendation")
+}
+
+model ArticleQueryPerformance {
+  id            Int       @id @default(autoincrement())
+  contentMapId  Int?      @map("content_map_id")
+  date          DateTime  @map("date") @db.Date
+  page          String    @map("page")
+  query         String    @map("query")
+  clicks        Int       @default(0)
+  impressions   Int       @default(0)
+  ctr           Float     @default(0) @map("ctr")
+  position      Float     @default(0) @map("position")
+  syncedAt      DateTime  @default(now()) @map("synced_at")
+
+  contentMap    ContentMap? @relation(fields: [contentMapId], references: [id])
+
+  @@unique([page, date, query], name: "page_date_query")
+  @@index([contentMapId])
+  @@index([page, date])
+  @@index([date])
+  @@map("article_query_performance")
+}
+
+// ============================================================
+// RAG — Custom Vector Search (replaces Onyx CE)
+// ============================================================
+
+model RagDocument {
+  id              Int       @id @default(autoincrement())
+  driveFileId     String    @unique @map("drive_file_id")
+  filename        String
+  mimeType        String    @map("mime_type")
+  md5Checksum     String?   @map("md5_checksum")
+  driveModifiedAt DateTime? @map("drive_modified_at")
+  charCount       Int       @default(0) @map("char_count")
+  chunkCount      Int       @default(0) @map("chunk_count")
+  indexedAt        DateTime  @default(now()) @map("indexed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  chunks RagChunk[]
+
+  @@map("rag_documents")
+}
+
+model RagChunk {
+  id             Int    @id @default(autoincrement())
+  documentId     Int    @map("document_id")
+  chunkIndex     Int    @map("chunk_index")
+  content        String
+  tokenCount     Int    @map("token_count")
+  headingContext String? @map("heading_context")
+  // embedding vector(768) — added via raw SQL migration (pgvector)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  document RagDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, chunkIndex])
+  @@map("rag_chunks")
+}
+
+model RagSyncState {
+  id             Int      @id @default(1)
+  startPageToken String?  @map("start_page_token")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  lastSyncResult Json?    @map("last_sync_result")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("rag_sync_state")
 }
