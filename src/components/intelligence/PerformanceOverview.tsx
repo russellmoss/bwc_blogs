@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useIntelligenceStore, classifyPageType } from "@/lib/store/intelligence-store";
 import type { DateRange, ChartGranularity, PageType } from "@/lib/store/intelligence-store";
 import type { PerformanceWithContentMap } from "@/types/intelligence";
 import { PerformanceChart } from "./PerformanceChart";
+import { QueryBreakdown } from "./QueryBreakdown";
 
 type SortKey = "clicks" | "impressions" | "ctr" | "position";
 
@@ -39,6 +40,8 @@ export function PerformanceOverview() {
     pageTypes, togglePageType,
     fetchPerformance, fetchTimeseries,
     triggerSync, isSyncing, latestDataDate,
+    fetchQueryData, selectedPageForQueries, setSelectedPageForQueries,
+    triggerQuerySync, isQuerySyncing,
   } = store;
 
   const [sortKey, setSortKey] = useState<SortKey>("impressions");
@@ -180,6 +183,10 @@ export function PerformanceOverview() {
             style={{ ...btn(false), opacity: isSyncing ? 0.6 : 1, cursor: isSyncing ? "wait" : "pointer" }}>
             {isSyncing ? "Syncing..." : "Sync Now"}
           </button>
+          <button onClick={() => triggerQuerySync()} disabled={isQuerySyncing}
+            style={{ ...btn(false), opacity: isQuerySyncing ? 0.6 : 1, cursor: isQuerySyncing ? "wait" : "pointer" }}>
+            {isQuerySyncing ? "Syncing Queries..." : "Sync Queries"}
+          </button>
         </div>
       </div>
 
@@ -294,22 +301,36 @@ export function PerformanceOverview() {
             <tbody>
               {sorted.map((row) => {
                 const badge = getPageTypeBadge(row);
+                const isSelected = selectedPageForQueries === row.page;
                 return (
-                  <tr key={row.id} style={{ borderBottom: "1px solid #f0f0f0", background: getRowBg(row) }}>
-                    <td style={{ padding: "10px 12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.page}>
-                      {getPageLabel(row)}
-                    </td>
-                    <td style={{ padding: "10px 8px" }}>
-                      <span style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 500, borderRadius: "4px",
-                        background: badge.bg, color: badge.color, whiteSpace: "nowrap" }}>
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.clicks.toLocaleString()}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.impressions.toLocaleString()}</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{(row.ctr * 100).toFixed(2)}%</td>
-                    <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.position.toFixed(1)}</td>
-                  </tr>
+                  <React.Fragment key={row.id}>
+                    <tr
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedPageForQueries(null);
+                        } else {
+                          setSelectedPageForQueries(row.page);
+                          fetchQueryData(row.page);
+                        }
+                      }}
+                      style={{ borderBottom: "1px solid #f0f0f0", background: isSelected ? "#f0f7ff" : getRowBg(row), cursor: "pointer" }}
+                    >
+                      <td style={{ padding: "10px 12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.page}>
+                        {getPageLabel(row)}
+                      </td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <span style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 500, borderRadius: "4px",
+                          background: badge.bg, color: badge.color, whiteSpace: "nowrap" }}>
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.clicks.toLocaleString()}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.impressions.toLocaleString()}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{(row.ctr * 100).toFixed(2)}%</td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.position.toFixed(1)}</td>
+                    </tr>
+                    {isSelected && <QueryBreakdown />}
+                  </React.Fragment>
                 );
               })}
             </tbody>

@@ -487,7 +487,74 @@ export function repairCanonicalDocument(doc: unknown): {
 
   }
 
-  // 16. Coerce photoId from string to number in all ImagePlacement nodes
+  // 16. Replace em dashes and en dashes in all text fields
+  const replaceDashes = (text: string): string =>
+    text.replace(/\u2014/g, " - ").replace(/\u2013/g, "-");
+
+  let dashCount = 0;
+  const repairTextField = (obj: Record<string, unknown>, field: string) => {
+    if (typeof obj[field] === "string") {
+      const replaced = replaceDashes(obj[field] as string);
+      if (replaced !== obj[field]) {
+        obj[field] = replaced;
+        dashCount++;
+      }
+    }
+  };
+
+  // Top-level text fields
+  for (const field of ["title", "metaTitle", "metaDescription", "executiveSummary"]) {
+    repairTextField(d, field);
+  }
+
+  // Sections: headings and content nodes
+  if (Array.isArray(d.sections)) {
+    for (const section of d.sections as Record<string, unknown>[]) {
+      repairTextField(section, "heading");
+      if (Array.isArray(section.content)) {
+        for (const node of section.content as Record<string, unknown>[]) {
+          const t = node.type as string;
+          if (t === "paragraph" || t === "pullQuote" || t === "callout") {
+            repairTextField(node, "text");
+          }
+          if (t === "keyFacts") {
+            repairTextField(node, "title");
+            if (Array.isArray(node.facts)) {
+              for (const fact of node.facts as Record<string, unknown>[]) {
+                repairTextField(fact, "text");
+              }
+            }
+          }
+          if (t === "list" && Array.isArray(node.items)) {
+            const items = node.items as string[];
+            for (let i = 0; i < items.length; i++) {
+              if (typeof items[i] === "string") {
+                const replaced = replaceDashes(items[i]);
+                if (replaced !== items[i]) {
+                  items[i] = replaced;
+                  dashCount++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // FAQ entries
+  if (Array.isArray(d.faq)) {
+    for (const item of d.faq as Record<string, unknown>[]) {
+      repairTextField(item, "question");
+      repairTextField(item, "answer");
+    }
+  }
+
+  if (dashCount > 0) {
+    changes.push(`Replaced em/en dashes in ${dashCount} text field(s)`);
+  }
+
+  // 17. Coerce photoId from string to number in all ImagePlacement nodes
   const coercePhotoId = (placement: Record<string, unknown>) => {
     if (typeof placement.photoId === "string") {
       const parsed = parseInt(placement.photoId as string, 10);

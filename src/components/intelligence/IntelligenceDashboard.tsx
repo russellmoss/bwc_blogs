@@ -7,8 +7,9 @@ import { useIntelligenceStore } from "@/lib/store/intelligence-store";
 import { PerformanceOverview } from "./PerformanceOverview";
 import { GapAnalysis } from "./GapAnalysis";
 import { RecommendationQueue } from "./RecommendationQueue";
+import { KeywordRankings } from "./KeywordRankings";
 
-type Tab = "performance" | "gaps" | "recommendations";
+type Tab = "performance" | "keywords" | "gaps" | "recommendations";
 
 export function IntelligenceDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("performance");
@@ -16,6 +17,7 @@ export function IntelligenceDashboard() {
 
   const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: "performance", label: "Performance" },
+    { key: "keywords", label: "Keyword Rankings" },
     { key: "gaps", label: "Gap Analysis" },
     { key: "recommendations", label: "Recommendations", badge: recommendations.length || undefined },
   ];
@@ -88,6 +90,7 @@ export function IntelligenceDashboard() {
       {/* Tab Content */}
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
         {activeTab === "performance" && <PerformanceOverview />}
+        {activeTab === "keywords" && <KeywordRankings />}
         {activeTab === "gaps" && <GapAnalysis />}
         {activeTab === "recommendations" && <RecommendationQueue />}
       </div>

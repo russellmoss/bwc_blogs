@@ -307,7 +307,7 @@ function normalizeDocument(obj: Record<string, unknown>, articleId?: number, art
   // Map alternate field names Claude commonly uses.
   // Each entry: [canonical name, ...alternate names Claude might use]
   const fieldAliases: [string, ...string[]][] = [
-    ["title", "blogTitle", "articleTitle", "postTitle"],
+    ["title", "blogTitle", "articleTitle", "postTitle", "headline"],
     ["articleId", "article_id"],
     ["articleType", "article_type", "type"],
     ["metaTitle", "meta_title"],

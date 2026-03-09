@@ -11,6 +11,7 @@ const typeBadgeColors: Record<string, { bg: string; color: string }> = {
   gap: { bg: "#fef3c7", color: "#92400e" },
   meta_rewrite: { bg: "#ede9fe", color: "#5b21b6" },
   title_update: { bg: "#fce7f3", color: "#9d174d" },
+  keyword_rescue: { bg: "#fef3c7", color: "#92400e" },
 };
 
 const priorityBadgeColors: Record<string, { bg: string; color: string }> = {

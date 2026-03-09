@@ -7,6 +7,8 @@ import { uploadToCloudinary } from "@/lib/cloudinary/upload";
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 20 * 1024 * 1024; // 20MB
 
+export const maxDuration = 60; // seconds — AI describe needs time
+
 /**
  * Run AI Vision describe on a photo URL.
  * Returns { altText, description, suggestedCategory } or null on failure.
@@ -67,71 +69,115 @@ Rules:
   }
 }
 
-// POST /api/photos/drive-upload — Upload file from UI directly to Cloudinary, catalog, AI describe
+/**
+ * POST /api/photos/drive-upload
+ *
+ * Accepts two modes:
+ * 1. JSON body with Cloudinary result (client-side upload — used on Vercel)
+ *    { cloudinaryPublicId, cloudinaryUrl, width, height, filename, category?, vineyardName?, season? }
+ * 2. FormData with file (server-side upload — works locally, limited to 4.5MB on Vercel)
+ */
 export async function POST(request: NextRequest) {
   try {
     await requireRole("admin", "editor");
 
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const category = (formData.get("category") as string) || null;
-    const vineyardName = (formData.get("vineyardName") as string) || null;
-    const season = (formData.get("season") as string) || null;
+    const contentType = request.headers.get("content-type") || "";
 
-    if (!file) {
-      return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "file is required" } },
-        { status: 400 }
-      );
+    let cloudinaryPublicId: string;
+    let cloudinaryUrl: string;
+    let width: number;
+    let height: number;
+    let filename: string;
+    let category: string | null = null;
+    let vineyardName: string | null = null;
+    let season: string | null = null;
+
+    if (contentType.includes("application/json")) {
+      // Mode 1: Client already uploaded to Cloudinary — just catalog
+      const body = await request.json();
+      cloudinaryPublicId = body.cloudinaryPublicId;
+      cloudinaryUrl = body.cloudinaryUrl;
+      width = body.width;
+      height = body.height;
+      filename = body.filename;
+      category = body.category || null;
+      vineyardName = body.vineyardName || null;
+      season = body.season || null;
+
+      if (!cloudinaryPublicId || !cloudinaryUrl || !filename) {
+        return NextResponse.json(
+          { success: false, error: { code: "VALIDATION_ERROR", message: "cloudinaryPublicId, cloudinaryUrl, and filename are required" } },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Mode 2: FormData — upload file through server to Cloudinary
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+      category = (formData.get("category") as string) || null;
+      vineyardName = (formData.get("vineyardName") as string) || null;
+      season = (formData.get("season") as string) || null;
+
+      if (!file) {
+        return NextResponse.json(
+          { success: false, error: { code: "VALIDATION_ERROR", message: "file is required" } },
+          { status: 400 }
+        );
+      }
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        return NextResponse.json(
+          { success: false, error: { code: "VALIDATION_ERROR", message: "Only JPEG, PNG, WebP files are allowed" } },
+          { status: 400 }
+        );
+      }
+
+      if (file.size > MAX_SIZE) {
+        return NextResponse.json(
+          { success: false, error: { code: "VALIDATION_ERROR", message: "File must be under 20MB" } },
+          { status: 400 }
+        );
+      }
+
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
+      const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+      const publicId = `${baseName}_${Date.now()}`;
+
+      console.log("[photo-upload] Uploading %s (%d bytes) to Cloudinary...", file.name, file.size);
+
+      const cloudinaryResult = await uploadToCloudinary(fileBuffer, {
+        publicId,
+        folder: "blog",
+      });
+
+      cloudinaryPublicId = cloudinaryResult.publicId;
+      cloudinaryUrl = cloudinaryResult.secureUrl;
+      width = cloudinaryResult.width;
+      height = cloudinaryResult.height;
+      filename = file.name;
+
+      console.log("[photo-upload] Cloudinary upload complete: %s", cloudinaryPublicId);
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "Only JPEG, PNG, WebP files are allowed" } },
-        { status: 400 }
-      );
-    }
-
-    if (file.size > MAX_SIZE) {
-      return NextResponse.json(
-        { success: false, error: { code: "VALIDATION_ERROR", message: "File must be under 20MB" } },
-        { status: 400 }
-      );
-    }
-
-    // 1. Upload directly to Cloudinary
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const baseName = file.name.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const publicId = `${baseName}_${Date.now()}`;
-
-    console.log("[photo-upload] Uploading %s (%d bytes) to Cloudinary...", file.name, file.size);
-
-    const cloudinaryResult = await uploadToCloudinary(fileBuffer, {
-      publicId,
-      folder: "blog",
-    });
-
-    console.log("[photo-upload] Cloudinary upload complete: %s", cloudinaryResult.publicId);
-
-    // 2. Create Photo record
+    // Create Photo record
     const photo = await prisma.photo.create({
       data: {
-        cloudinaryPublicId: cloudinaryResult.publicId,
-        cloudinaryUrl: cloudinaryResult.secureUrl,
-        filename: file.name,
+        cloudinaryPublicId,
+        cloudinaryUrl,
+        filename,
         category,
         vineyardName,
         season,
         classification: "informative",
-        widthPx: cloudinaryResult.width,
-        heightPx: cloudinaryResult.height,
+        widthPx: width || null,
+        heightPx: height || null,
         uploadedToCdn: true,
       },
     });
 
-    // 3. Auto-run AI Vision describe — non-blocking failure
+    // Auto-run AI Vision describe
     console.log("[photo-upload] Running AI Vision describe...");
-    const aiResult = await aiDescribe(cloudinaryResult.secureUrl);
+    const aiResult = await aiDescribe(cloudinaryUrl);
 
     let updatedPhoto = photo;
     if (aiResult) {

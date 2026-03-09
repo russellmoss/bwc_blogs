@@ -39,6 +39,7 @@ export function PhotoManager() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [directUploading, setDirectUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPhotos();
@@ -90,26 +91,68 @@ export function PhotoManager() {
 
     const fileList = Array.from(files).slice(0, 10); // Cap at 10
     setDirectUploading(true);
+    setUploadError(null);
     setUploadProgress({ current: 0, total: fileList.length });
 
     for (let i = 0; i < fileList.length; i++) {
       setUploadProgress({ current: i + 1, total: fileList.length });
       try {
+        // Step 1: Get a signed upload token from our API
+        const signRes = await fetch("/api/photos/sign-upload", { method: "POST" });
+        if (!signRes.ok) {
+          const errText = await signRes.text();
+          throw new Error(`Sign failed (${signRes.status}): ${errText}`);
+        }
+        const signData = await signRes.json();
+        if (!signData.success) {
+          throw new Error(signData.error?.message || "Failed to get upload signature");
+        }
+        const { signature, timestamp, folder, apiKey, cloudName } = signData.data;
+
+        // Step 2: Upload directly to Cloudinary (bypasses Vercel 4.5MB body limit)
         const formData = new FormData();
         formData.append("file", fileList[i]);
+        formData.append("signature", signature);
+        formData.append("timestamp", String(timestamp));
+        formData.append("folder", folder);
+        formData.append("api_key", apiKey);
 
-        const res = await fetch("/api/photos/drive-upload", {
+        const cldRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+          { method: "POST", body: formData }
+        );
+        if (!cldRes.ok) {
+          const errText = await cldRes.text();
+          throw new Error(`Cloudinary upload failed (${cldRes.status}): ${errText}`);
+        }
+        const cldData = await cldRes.json();
+
+        // Step 3: Catalog in our DB + run AI describe (small JSON payload)
+        const catalogRes = await fetch("/api/photos/drive-upload", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cloudinaryPublicId: cldData.public_id,
+            cloudinaryUrl: cldData.secure_url,
+            width: cldData.width,
+            height: cldData.height,
+            filename: fileList[i].name,
+          }),
         });
-        const data = await res.json();
-        if (data.success) {
-          setPhotos((prev) => [data.data, ...prev]);
+        if (!catalogRes.ok) {
+          const errText = await catalogRes.text();
+          throw new Error(`Catalog failed (${catalogRes.status}): ${errText}`);
+        }
+        const catalogData = await catalogRes.json();
+        if (catalogData.success) {
+          setPhotos((prev) => [catalogData.data, ...prev]);
         } else {
-          console.error(`Upload failed for ${fileList[i].name}:`, data.error);
+          throw new Error(catalogData.error?.message || "Catalog failed");
         }
       } catch (err) {
-        console.error(`Upload error for ${fileList[i].name}:`, err);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`Upload error for ${fileList[i].name}:`, msg);
+        setUploadError(`Failed to upload ${fileList[i].name}: ${msg}`);
       }
     }
 
@@ -238,6 +281,14 @@ export function PhotoManager() {
           </button>
         </div>
       </div>
+
+      {/* Upload Error */}
+      {uploadError && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "10px 14px", marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: "13px", color: "#991b1b" }}>{uploadError}</span>
+          <button onClick={() => setUploadError(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#991b1b", fontSize: "16px" }}>&times;</button>
+        </div>
+      )}
 
       {/* Catalog Form */}
       {showCatalog && (

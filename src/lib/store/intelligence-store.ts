@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { PerformanceWithContentMap, ContentRecommendation } from "@/types/intelligence";
+import type { PerformanceWithContentMap, ContentRecommendation, AggregatedQueryRow, QuerySyncResult } from "@/types/intelligence";
 
 /** "Last N months of data" means from (latestDate - N months) to latestDate */
 export type DateRange = "3m" | "6m" | "12m" | "all" | "custom";
@@ -34,6 +34,11 @@ interface IntelligenceStoreState {
   chartGranularity: ChartGranularity;
   /** Active page type filters — when all 3 are selected, no filtering is applied */
   pageTypes: Set<PageType>;
+  queryData: AggregatedQueryRow[];
+  selectedPageForQueries: string | null;
+  isLoadingQueryData: boolean;
+  querySyncResult: QuerySyncResult | null;
+  isQuerySyncing: boolean;
 }
 
 interface IntelligenceStoreActions {
@@ -48,6 +53,9 @@ interface IntelligenceStoreActions {
   setCustomDateRange: (start: string, end: string) => void;
   setChartGranularity: (g: ChartGranularity) => void;
   togglePageType: (type: PageType) => void;
+  fetchQueryData: (page: string) => Promise<void>;
+  triggerQuerySync: () => Promise<void>;
+  setSelectedPageForQueries: (page: string | null) => void;
 }
 
 function subtractMonths(dateStr: string, months: number): string {
@@ -78,6 +86,11 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
     customEndDate: defaultDate(),
     chartGranularity: "daily",
     pageTypes: new Set<PageType>(["blog", "product", "static"]),
+    queryData: [],
+    selectedPageForQueries: null,
+    isLoadingQueryData: false,
+    querySyncResult: null,
+    isQuerySyncing: false,
 
     fetchPerformance: async () => {
       set({ isLoadingPerformance: true });
@@ -207,7 +220,8 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
         const res = await fetch("/api/intelligence/sync", { method: "POST" });
         const data = await res.json();
         if (data.success) {
-          set({ lastSyncedAt: new Date().toISOString() });
+          // Reset date boundaries so re-fetch uses today's date, discovering new data
+          set({ lastSyncedAt: new Date().toISOString(), latestDataDate: null, earliestDataDate: null });
           // Re-detect date boundaries then refresh
           await get().fetchTimeseries();
           await get().fetchPerformance();
@@ -258,6 +272,38 @@ export const useIntelligenceStore = create<IntelligenceStoreState & Intelligence
     setDateRange: (range) => set({ dateRange: range }),
     setCustomDateRange: (start, end) => set({ customStartDate: start, customEndDate: end, dateRange: "custom" }),
     setChartGranularity: (g) => set({ chartGranularity: g }),
+    fetchQueryData: async (page: string) => {
+      set({ isLoadingQueryData: true, selectedPageForQueries: page });
+      try {
+        const res = await fetch(`/api/intelligence/query-performance?page=${encodeURIComponent(page)}&limit=20`);
+        const data = await res.json();
+        if (data.success) {
+          set({ queryData: data.data });
+        }
+      } catch (error) {
+        console.error("[IntelligenceStore] Failed to fetch query data:", error);
+      } finally {
+        set({ isLoadingQueryData: false });
+      }
+    },
+
+    triggerQuerySync: async () => {
+      set({ isQuerySyncing: true });
+      try {
+        const res = await fetch("/api/intelligence/query-sync", { method: "POST" });
+        const data = await res.json();
+        if (data.success) {
+          set({ querySyncResult: data.data });
+        }
+      } catch (error) {
+        console.error("[IntelligenceStore] Query sync failed:", error);
+      } finally {
+        set({ isQuerySyncing: false });
+      }
+    },
+
+    setSelectedPageForQueries: (page) => set({ selectedPageForQueries: page, queryData: [] }),
+
     togglePageType: (type) => {
       const current = get().pageTypes;
       const next = new Set(current);

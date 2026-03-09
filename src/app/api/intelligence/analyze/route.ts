@@ -10,7 +10,7 @@ const AnalyzeBodySchema = z.object({
 
 const RecommendationSchema = z.object({
   contentMapId: z.number().nullable(),
-  recommendationType: z.enum(["update", "new_spoke", "gap", "meta_rewrite", "title_update"]),
+  recommendationType: z.enum(["update", "new_spoke", "gap", "meta_rewrite", "title_update", "keyword_rescue"]),
   title: z.string(),
   rationale: z.string(),
   suggestedPrompt: z.string(),
@@ -49,6 +49,40 @@ export async function POST(request: NextRequest) {
       take: 20,
     });
 
+    // Fetch top queries for each content map entry
+    const contentMapIds = [...new Set(performanceRows.filter((r) => r.contentMapId).map((r) => r.contentMapId!))];
+    const topQueriesMap = new Map<number, { query: string; clicks: number; impressions: number; position: number }[]>();
+
+    if (contentMapIds.length > 0) {
+      const queryRows = await prisma.articleQueryPerformance.groupBy({
+        by: ["query", "contentMapId"],
+        where: { contentMapId: { in: contentMapIds }, date: { gte: since } },
+        _sum: { clicks: true, impressions: true },
+        _avg: { position: true },
+        orderBy: { _sum: { impressions: "desc" } },
+      });
+
+      for (const row of queryRows) {
+        if (!row.contentMapId) continue;
+        const list = topQueriesMap.get(row.contentMapId) ?? [];
+        if (list.length < 5) {
+          list.push({
+            query: row.query,
+            clicks: row._sum.clicks ?? 0,
+            impressions: row._sum.impressions ?? 0,
+            position: Math.round((row._avg.position ?? 0) * 10) / 10,
+          });
+          topQueriesMap.set(row.contentMapId, list);
+        }
+      }
+    }
+
+    // Enrich performance rows with top queries
+    const enrichedPerformance = performanceRows.map((r) => ({
+      ...r,
+      topQueries: r.contentMapId ? (topQueriesMap.get(r.contentMapId) ?? []) : [],
+    }));
+
     // Fetch all published content map entries
     const publishedArticles = await prisma.contentMap.findMany({
       where: { status: "published" },
@@ -65,7 +99,7 @@ Return ONLY a valid JSON array of recommendation objects. No preamble, no markdo
 Each object must have exactly these fields:
 {
   "contentMapId": number | null,
-  "recommendationType": "update" | "new_spoke" | "gap" | "meta_rewrite" | "title_update",
+  "recommendationType": "update" | "new_spoke" | "gap" | "meta_rewrite" | "title_update" | "keyword_rescue",
   "title": string (concise recommendation title),
   "rationale": string (1-2 sentences explaining why),
   "suggestedPrompt": string (the exact prompt to paste into the Composer chat),
@@ -76,10 +110,13 @@ Generate 5-10 recommendations. Prioritize:
 1. Articles with position 4-10 and high impressions (meta/title optimization)
 2. Target keywords with zero clicks (content gaps)
 3. Spokes missing from high-performing hubs
-4. Published articles needing content refresh (position declining)`;
+4. Published articles needing content refresh (position declining)
+5. "keyword_rescue": queries with high impressions but position 8-20 that could move to page 1 with optimization
+
+Each performance row includes a "topQueries" array with up to 5 queries driving traffic. Use these to identify keyword rescue opportunities and content optimization targets.`;
 
     const userMessage = `<PERFORMANCE_DATA>
-${JSON.stringify(performanceRows, null, 2)}
+${JSON.stringify(enrichedPerformance, null, 2)}
 </PERFORMANCE_DATA>
 
 <CONTENT_MAP>

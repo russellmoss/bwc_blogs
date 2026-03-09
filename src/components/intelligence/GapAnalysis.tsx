@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useIntelligenceStore } from "@/lib/store/intelligence-store";
+import type { KeywordRankEntry } from "@/types/intelligence";
 
 interface ContentMapEntry {
   id: number;
@@ -48,6 +49,9 @@ export function GapAnalysis() {
     [publishedArticles, indexedIds]
   );
 
+  const [keywordRanks, setKeywordRanks] = useState<Map<number, KeywordRankEntry[]>>(new Map());
+  const [loadingRanks, setLoadingRanks] = useState(false);
+
   const keywordGaps = useMemo(() => {
     const gaps: { article: ContentMapEntry; missingKeywords: string[] }[] = [];
     for (const article of publishedArticles) {
@@ -59,6 +63,34 @@ export function GapAnalysis() {
     }
     return gaps;
   }, [publishedArticles, performanceData]);
+
+  const fetchKeywordRanks = useCallback(async () => {
+    if (keywordGaps.length === 0) return;
+    setLoadingRanks(true);
+    const newRanks = new Map<number, KeywordRankEntry[]>();
+    try {
+      await Promise.all(
+        keywordGaps.slice(0, 10).map(async ({ article }) => {
+          try {
+            const res = await fetch(`/api/intelligence/keyword-ranks?contentMapId=${article.id}`);
+            const data = await res.json();
+            if (data.success) {
+              newRanks.set(article.id, data.data);
+            }
+          } catch { /* skip individual failures */ }
+        })
+      );
+      setKeywordRanks(newRanks);
+    } finally {
+      setLoadingRanks(false);
+    }
+  }, [keywordGaps]);
+
+  useEffect(() => {
+    if (keywordGaps.length > 0 && keywordRanks.size === 0 && !loadingRanks) {
+      fetchKeywordRanks();
+    }
+  }, [keywordGaps, keywordRanks.size, loadingRanks, fetchKeywordRanks]);
 
   const isLoading = isLoadingPerformance || isLoadingArticles;
 
@@ -129,19 +161,49 @@ export function GapAnalysis() {
                   <th style={{ textAlign: "left", padding: "8px", color: "#414141", fontWeight: 500 }}>Article</th>
                   <th style={{ textAlign: "left", padding: "8px", color: "#414141", fontWeight: 500 }}>Hub</th>
                   <th style={{ textAlign: "left", padding: "8px", color: "#414141", fontWeight: 500 }}>Missing Keywords</th>
+                  <th style={{ textAlign: "right", padding: "8px", color: "#414141", fontWeight: 500 }}>Impressions</th>
+                  <th style={{ textAlign: "right", padding: "8px", color: "#414141", fontWeight: 500 }}>Avg Position</th>
+                  <th style={{ textAlign: "left", padding: "8px", color: "#414141", fontWeight: 500 }}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {keywordGaps.map(({ article, missingKeywords }) => (
-                  <tr key={article.id} style={{ borderBottom: "1px solid #e8e6e6" }}>
-                    <td style={{ padding: "8px" }}>{article.title}</td>
-                    <td style={{ padding: "8px", color: "#414141" }}>{article.hubName}</td>
-                    <td style={{ padding: "8px", color: "#414141" }}>
-                      {missingKeywords.slice(0, 4).join(", ")}
-                      {missingKeywords.length > 4 && ` +${missingKeywords.length - 4}`}
-                    </td>
-                  </tr>
-                ))}
+                {keywordGaps.map(({ article, missingKeywords }) => {
+                  const ranks = keywordRanks.get(article.id);
+                  const targetRanks = ranks?.filter((r) => r.isTarget) ?? [];
+                  const totalImpressions = targetRanks.reduce((s, r) => s + r.impressions, 0);
+                  const avgPosition = targetRanks.length > 0
+                    ? targetRanks.reduce((s, r) => s + r.avgPosition, 0) / targetRanks.length
+                    : 0;
+                  const hasImpressions = totalImpressions > 0;
+                  const status = !ranks ? (loadingRanks ? "Loading..." : "No data") : hasImpressions ? "Ranking but no clicks" : "Not indexed";
+                  const statusColor = hasImpressions ? "#92400e" : "#991b1b";
+                  const statusBg = hasImpressions ? "#fef3c7" : "#fee2e2";
+                  return (
+                    <tr key={article.id} style={{ borderBottom: "1px solid #e8e6e6" }}>
+                      <td style={{ padding: "8px" }}>{article.title}</td>
+                      <td style={{ padding: "8px", color: "#414141" }}>{article.hubName}</td>
+                      <td style={{ padding: "8px", color: "#414141" }}>
+                        {missingKeywords.slice(0, 4).join(", ")}
+                        {missingKeywords.length > 4 && ` +${missingKeywords.length - 4}`}
+                      </td>
+                      <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {ranks ? totalImpressions.toLocaleString() : "-"}
+                      </td>
+                      <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                        {ranks && avgPosition > 0 ? avgPosition.toFixed(1) : "-"}
+                      </td>
+                      <td style={{ padding: "8px" }}>
+                        {ranks ? (
+                          <span style={{ padding: "2px 8px", fontSize: "11px", fontWeight: 500, borderRadius: "4px", background: statusBg, color: statusColor }}>
+                            {status}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "12px", color: "#999" }}>{status}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
