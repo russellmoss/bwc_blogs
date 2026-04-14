@@ -26,7 +26,18 @@
       "WebSearch",
       "Bash(printf claude-sonnet-4-5-20250929:*)",
       "Bash(xargs grep:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npx eslint:*)",
+      "Bash(git checkout:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh variable:*)",
+      "Bash(gh secret:*)",
+      "Bash(git:*)",
+      "Bash(source .env:*)",
+      "Bash(python3:*)",
+      "Bash(gh api:*)"
     ]
   }
 }

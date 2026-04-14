@@ -101,6 +101,7 @@ model ArticleDocument {
   version      Int      @default(1)
   canonicalDoc Json     @map("canonical_doc")
   htmlOverrides Json?   @map("html_overrides")
+  onyxSources  Json?    @map("onyx_sources")
   finalizedAt  DateTime @default(now()) @map("finalized_at")
   finalizedBy  String?  @map("finalized_by")
   notes        String?

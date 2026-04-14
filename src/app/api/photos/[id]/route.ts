@@ -89,7 +89,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole("admin");
+    await requireRole("admin", "editor", "viewer");
     const { id } = await params;
     const photoId = parseInt(id, 10);
 

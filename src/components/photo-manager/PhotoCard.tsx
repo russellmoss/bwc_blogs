@@ -125,6 +125,8 @@ export function PhotoCard({ photo, onUpdate, onDelete }: PhotoCardProps) {
 
       if (data.success) {
         onDelete(photo.id);
+      } else if (!data.success) {
+        alert(data.error?.message || "Failed to delete photo");
       }
     } finally {
       setDeleting(false);

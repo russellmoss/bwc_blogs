@@ -15,6 +15,7 @@ const FinalizeSchema = z.object({
     html: z.string(),
     reason: z.string(),
   })).nullable().default(null),
+  onyxSources: z.array(z.record(z.string(), z.any())).nullable().optional().default(null),
   notes: z.string().optional(),
   skipRender: z.boolean().optional().default(false),
 });
@@ -64,7 +65,8 @@ export async function POST(
       htmlOverrides,
       user.email,
       parsed.data.notes,
-      preRenderedOutput
+      preRenderedOutput,
+      parsed.data.onyxSources
     );
 
     // Log finalization

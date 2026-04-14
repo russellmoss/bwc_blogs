@@ -89,6 +89,16 @@ export async function searchCustomRagMulti(
     queries.map((q) => searchCustomRag(q))
   );
 
+  const failed = results.filter(
+    (r): r is PromiseRejectedResult => r.status === "rejected"
+  );
+  if (failed.length > 0) {
+    console.warn(
+      `[rag-search] ${failed.length}/${results.length} queries failed:`,
+      failed.map((f) => f.reason?.message ?? String(f.reason))
+    );
+  }
+
   return results
     .filter(
       (r): r is PromiseFulfilledResult<OnyxContext> => r.status === "fulfilled"

@@ -13,6 +13,7 @@ import type {
   EditingMode,
 } from "@/types/ui";
 import type { PhotoManifest } from "@/types/photo";
+import type { OnyxSearchResult } from "@/types/onyx";
 import { createUndoEntry, pushToStack, popFromStack, setByPath } from "@/lib/undo-redo";
 import { renderArticle } from "@/lib/renderer";
 import { TEMPLATE_VERSION } from "@/lib/renderer/compiled-template";
@@ -713,6 +714,7 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
             document: state.currentDocument,
             html: state.currentHtml,
             htmlOverrides: state.htmlOverrides.length > 0 ? state.htmlOverrides : null,
+            onyxSources: state.onyxSources.length > 0 ? state.onyxSources : null,
             ...(state.isImportedHtml && { skipRender: true }),
           }),
         });
@@ -826,6 +828,7 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
         const doc = result.data.latestDocument.canonicalDoc as CanonicalArticleDocument;
         const overrides = (result.data.latestDocument.htmlOverrides as HtmlOverride[]) || [];
         const storedHtml: string | null = result.data.latestDocument.htmlContent ?? null;
+        const savedOnyxSources = (result.data.latestDocument.onyxSources as OnyxSearchResult[]) || [];
 
         // Detect if this was an imported article (synthetic doc has version "1.0-import")
         const isImported = (doc as unknown as Record<string, unknown>).version === "1.0-import";
@@ -851,6 +854,8 @@ export const useArticleStore = create<ArticleEditorState & ArticleEditorActions>
           lastFinalizedVersion: result.data.latestDocument.version,
           isImportedHtml: isImported,
           importSource: isImported ? "paste" : null,
+          onyxSources: savedOnyxSources,
+          citationMatches: null,
           statusMessage: "",
         });
 

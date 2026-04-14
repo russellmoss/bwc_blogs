@@ -53,6 +53,7 @@ export async function GET(
               version: latestDoc.version,
               canonicalDoc: latestDoc.canonicalDoc,
               htmlOverrides: latestDoc.htmlOverrides,
+              onyxSources: latestDoc.onyxSources,
               htmlContent: storedHtml,
               finalizedAt: latestDoc.finalizedAt.toISOString(),
               finalizedBy: latestDoc.finalizedBy,

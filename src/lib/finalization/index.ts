@@ -104,7 +104,8 @@ export async function commitFinalization(
   htmlOverrides: HtmlOverride[] | null,
   userEmail: string,
   notes?: string,
-  preRenderedOutput?: RendererOutput
+  preRenderedOutput?: RendererOutput,
+  onyxSources?: Record<string, unknown>[] | null
 ): Promise<CommitResult> {
   // 1. Final render (skip if pre-rendered HTML was provided for imports)
   const rendererOutput = preRenderedOutput || renderArticle({
@@ -143,6 +144,7 @@ export async function commitFinalization(
         version: nextVersion,
         canonicalDoc: document as any,
         htmlOverrides: htmlOverrides as any,
+        onyxSources: onyxSources as any ?? undefined,
         finalizedBy: userEmail,
         notes: notes || null,
       },
